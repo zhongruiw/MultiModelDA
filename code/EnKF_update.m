@@ -1,3 +1,4 @@
+
 % function [u_posterior,u_mean_posterior] = ETKF_update(u_prior, obs, G, Ro, Ens_Num, r)
 % u_mean_prior = mean(u_prior, 2);
 % U = u_prior - u_mean_prior * ones(1, Ens_Num);
