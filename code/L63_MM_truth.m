@@ -2,7 +2,7 @@
 rng(10)
 
 % Time parameters
-T = 80; % total time length
+T = 1e3; % total time length
 dt = 0.005; % numerical integration time step
 dt_obs = 0.5; % observation time step
 obs_noise = 2*sqrt(2);
@@ -18,8 +18,8 @@ rho1 = 28;
 rho2 = 10;  % Alternate regime value
 
 sigma_x = sqrt(2.000);
-sigma_y = sqrt(12.13);
-sigma_z = sqrt(12.31);
+sigma_y = 1;
+sigma_z = 1;
 
 % Regime switching (Markov process)
 lambda_12 = 0.2; % Transition from rho1 -> rho2
@@ -69,4 +69,4 @@ z_obs = z_truth(1:N_gap:end) + randn(1, N/N_gap) * obs_noise;
 S_obs = S(1:N_gap:end);
 
 % Save for ETKF
-save('TrueData.mat', 'x_truth', 'y_truth', 'z_truth', 'S', 'x_obs', 'y_obs', 'z_obs', 'N', 'N_gap', 'dt', 'dt_obs','S_obs');
+save('TrueData.mat', 'x_truth', 'y_truth', 'z_truth', 'S', 'x_obs', 'y_obs', 'z_obs', 'N', 'N_gap', 'dt', 'dt_obs','S_obs', 'obs_noise', 'sigma_x', 'sigma_y', 'sigma_z');
