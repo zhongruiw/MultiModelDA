@@ -1,4 +1,3 @@
-% test2
 % Load true data
 load('TrueData.mat')
 load Clustering_fcm.mat
