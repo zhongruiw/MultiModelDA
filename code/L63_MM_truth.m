@@ -69,4 +69,4 @@ z_obs = z_truth(1:N_gap:end) + randn(1, N/N_gap) * obs_noise;
 S_obs = S(1:N_gap:end);
 
 % Save for ETKF
-save('TrueData.mat', 'x_truth', 'y_truth', 'z_truth', 'S', 'x_obs', 'y_obs', 'z_obs', 'N', 'N_gap', 'dt', 'dt_obs','S_obs', 'obs_noise', 'sigma_x', 'sigma_y', 'sigma_z');
+save('../data/TrueData.mat', 'x_truth', 'y_truth', 'z_truth', 'S', 'x_obs', 'y_obs', 'z_obs', 'N', 'N_gap', 'dt', 'dt_obs','S_obs', 'obs_noise', 'sigma_x', 'sigma_y', 'sigma_z');

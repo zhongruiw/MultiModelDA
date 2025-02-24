@@ -1,6 +1,6 @@
 % Load true data
-load('TrueData.mat')
-load Clustering_fcm.mat
+load('../data/TrueData.mat')
+load ('../data/Clustering_fcm.mat')
 rng(10)
 
 dt = 0.005; % Numerical integration time step
