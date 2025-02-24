@@ -54,4 +54,4 @@ options = [1.5, 100, 1e-5, 1]; % [Fuzziness, MaxIter, Tolerance, Display]
 U = [U(:,1).*ones(num_clusters,window_length-1),U];
 
 Gamma_t_fcm = U;
-save('Clustering_fcm.mat', "Gamma_t_fcm")
+save('../data/Clustering_fcm.mat', "Gamma_t_fcm")
