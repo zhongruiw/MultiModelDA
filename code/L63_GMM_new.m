@@ -20,12 +20,28 @@ Ro = obs_noise^2 * eye(Dim_obs); % Observation noise covariance
 sigma = [10, 20];
 beta = [8/3, 5];
 rho = [28, 10];
+<<<<<<< Updated upstream
+=======
+sigma_x = sqrt(2.000);
+sigma_y = sqrt(12.13);
+sigma_z = sqrt(12.31);
+>>>>>>> Stashed changes
 
 % Initialize ensemble
 ensemble = [x_truth(1) + sqrt(ini_cov) * randn(1, Ens_Total);
             y_truth(1) + sqrt(ini_cov) * randn(1, Ens_Total);
             z_truth(1) + sqrt(ini_cov) * randn(1, Ens_Total)];
 
+<<<<<<< Updated upstream
+=======
+% Gamma_t = Gamma_t_fcm; % Initialize mixture weights
+% % Sometimes adjusting orders is needed since clustering algorthim has no order
+% Gamma_t_new = zeros(size(Gamma_t));
+% Gamma_t_new(1, :) = Gamma_t(2, :);
+% Gamma_t_new(2, :) = Gamma_t(1, :);
+% Gamma_t = Gamma_t_new;
+
+>>>>>>> Stashed changes
 S_delayed = S_obs; % 先复制原始信号
 n = length(S_obs);
 for i = 1:n-1
@@ -37,6 +53,7 @@ for i = 1:n-1
         end
     end
 end
+<<<<<<< Updated upstream
 
 S_delayed(76) = 0;
 S_delayed(77) = 1;
@@ -49,6 +66,14 @@ Gamma_t_new = zeros(size(Gamma_t));
 % Gamma_t = [Gamma_1t;Gamma_2t];
 
 
+=======
+S_delayed(76) = 0;
+S_delayed(77) = 1;
+S_delayed(79) = 0;
+Gamma_1t = S_delayed == 1;
+Gamma_2t = 1 - Gamma_1t;
+Gamma_t = [Gamma_1t;Gamma_2t];
+>>>>>>> Stashed changes
 
 % Estimate initial mean and covariance from ensemble
 initial_mean = mean(ensemble, 2);
@@ -68,7 +93,11 @@ posterior_GMM_cov{1} = initial_cov;
 % Run MM-EnKF
 for ij = 2:N/N_gap
     % Step 1: Allocate ensemble sizes based on prior weights
+<<<<<<< Updated upstream
     %Ens_Num = max(15, round(Gamma_t(:,ij) * Ens_Total));
+=======
+    % Ens_Num = max(15, round(Gamma_t(:,ij) * Ens_Total));
+>>>>>>> Stashed changes
     Ens_Num = round(Gamma_t(:,ij) * Ens_Total);
     excess = sum(Ens_Num) - Ens_Total;
     if excess > 0
@@ -103,12 +132,19 @@ for ij = 2:N/N_gap
         else
             [u_posterior, posterior_mean(:, ij, m)] = EnKF_update(ensemble(:, idx_range), obs_t, G, Ro, Ens_Num(m));
             posterior_cov{ij, m} = ((u_posterior-posterior_mean(:, ij, m)) * (u_posterior-posterior_mean(:, ij, m))') / (Ens_Num(m) - 1);
+<<<<<<< Updated upstream
     
             
+=======
+>>>>>>> Stashed changes
             ensemble(:, idx_range) = u_posterior;
             % Compute likelihood
             innovation = obs_t - G * posterior_mean(:, ij, m);
             likelihoods(m) = exp(-0.5 * (innovation' / (G * posterior_cov{ij, m} * G' + Ro) * innovation)) / sqrt(det(2 * pi * (G * posterior_cov{ij, m} * G' + Ro)));
+<<<<<<< Updated upstream
+=======
+    
+>>>>>>> Stashed changes
         end
     end
     
@@ -124,8 +160,14 @@ for ij = 2:N/N_gap
     posterior_GMM_cov{ij} = zeros(3,3);
     for m = 1:models
         if Ens_Num(m) > 0
+<<<<<<< Updated upstream
         diff = posterior_mean(:, ij, m) - posterior_GMM_mean(:, ij);
         posterior_GMM_cov{ij} = posterior_GMM_cov{ij} + posterior_weights(m, ij) * (posterior_cov{ij, m} + (diff * diff'));
+=======
+            diff = posterior_mean(:, ij, m) - posterior_GMM_mean(:, ij);
+            posterior_GMM_cov{ij} = posterior_GMM_cov{ij} + posterior_weights(m, ij) * (posterior_cov{ij, m} + (diff * diff'));
+    
+>>>>>>> Stashed changes
         end
     end
 end
