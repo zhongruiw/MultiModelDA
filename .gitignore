@@ -4,3 +4,5 @@ code/L63_GMM_new.asv
 code/clustering_pseudo.m
 /code/.ipynb_checkpoints
 data/TrueData.mat
+/code/__pycache__
+/data
