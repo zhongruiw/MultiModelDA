@@ -7,9 +7,8 @@ from functools import partial
 
 
 class FCMEntropy:
-    def __init__(self, num_clusters, D, m=2.0, lambda_e=1e-2, lr=1e-2, num_steps=500, seed=0):
+    def __init__(self, num_clusters, m=2.0, lambda_e=1e-2, lr=1e-2, num_steps=500, seed=0):
         self.num_clusters = num_clusters
-        self.D = D
         self.m = m
         self.lambda_e = lambda_e
         self.lr = lr
@@ -23,26 +22,24 @@ class FCMEntropy:
 
     # ========== JAX-based loss ========== #
     @staticmethod
-    @partial(jax.jit, static_argnames=["m", "lambda_e", "D"])
-    def loss(params, data, m, lambda_e, D):
+    @partial(jax.jit, static_argnames=["m", "lambda_e"])
+    def loss(params, data, m, lambda_e):
         fuzzypartmat_logits, centers, W_logits = params
         M, N = data.shape
         num_clusters = centers.shape[0]
 
         fuzzypartmat = softmax(fuzzypartmat_logits, axis=1)
         W = softmax(W_logits)
-        W_full = jnp.tile(W, N // D)
-
         fuzzypartmat_m = fuzzypartmat ** m
 
         def cluster_loss(k):
             diff = data - centers[k]
-            weighted_sq = jnp.sum(W_full * diff**2, axis=1)
+            weighted_sq = jnp.sum(W * diff**2, axis=1)
             return jnp.sum(fuzzypartmat_m[:, k] * weighted_sq)
 
         total_loss = jnp.sum(jax.vmap(cluster_loss)(jnp.arange(num_clusters))) / M
         entropy_term = jnp.sum(W * jnp.log(jnp.maximum(W, jnp.finfo(float).eps)))
-        total_loss += (lambda_e / D) * entropy_term
+        total_loss += lambda_e * entropy_term
 
         return total_loss
 
@@ -54,11 +51,11 @@ class FCMEntropy:
         fuzzypartmat_logits = jax.random.normal(key1, (M, self.num_clusters))
         centers = jax.random.uniform(key2, (self.num_clusters, N),
                                      minval=jnp.min(data), maxval=jnp.max(data))
-        W_logits = jax.random.normal(key3, (self.D,))
+        W_logits = jax.random.normal(key3, (N,))
         
         return (fuzzypartmat_logits, centers, W_logits)
 
-    def fit(self, data, optimizer='gradient_descent', init_params=None, tol=1e-5):
+    def fit(self, data, optimizer='gradient_descent', init_params=None, tol=1e-6):
         if optimizer == 'gradient_descent':
             return self._fit_jax(data, init_params)
         elif optimizer == 'iterative':
@@ -76,7 +73,7 @@ class FCMEntropy:
 
         @jax.jit
         def step(params, opt_state):
-            loss, grads = jax.value_and_grad(self.loss)(params, data, self.m, self.lambda_e, self.D)
+            loss, grads = jax.value_and_grad(self.loss)(params, data, self.m, self.lambda_e)
             updates, opt_state = optimizer.update(grads, opt_state)
             params = optax.apply_updates(params, updates)
             grad_norms = jax.tree.map(lambda g: jnp.linalg.norm(g), grads)
@@ -108,11 +105,10 @@ class FCMEntropy:
     def _fit_iterative(self, data, tol):
         m, max_iter, lambda_e = self.m, self.num_steps, self.lambda_e
         M, N = data.shape
-        D, K = self.D, self.num_clusters
+        K = self.num_clusters
 
         centers = np.random.rand(K, N) * (data.max(axis=0) - data.min(axis=0)) + data.min(axis=0)
-        W = np.ones(D) / D
-        W_full = np.tile(W, N // D)
+        W = np.ones(N) / N
         loss_history = np.zeros(max_iter)
 
         for iter in range(max_iter):
@@ -122,7 +118,7 @@ class FCMEntropy:
             dist = np.zeros((M, K))
             for k in range(K):
                 diff = data - centers[k]
-                dist[:, k] = np.sum(W_full * (diff ** 2), axis=1)
+                dist[:, k] = np.sum(W * (diff ** 2), axis=1)
             dist = np.maximum(dist, np.finfo(float).eps)
             tmp = dist ** (-1 / (m - 1))
             fuzzypartmat = tmp / np.sum(tmp, axis=1, keepdims=True)
@@ -132,41 +128,36 @@ class FCMEntropy:
             denom = np.sum(fuzzypartmat_m, axis=0)
             centers = (fuzzypartmat_m.T @ data) / denom[:, None]
 
-            # Calculate a_d (N-dimensional) and map to D dimensions
+            # Update feature weights W 
             a = np.zeros(N)
             for d in range(N):
-                diff = data[:, d][:, None] - centers[:, d]
+                diff = data[:, d][:, None] - centers[:, d][None, :]
                 a[d] = np.sum(fuzzypartmat_m * (diff ** 2))
-            a_temp = a.reshape(D, N // D)
-            a_3d = np.sum(a_temp, axis=1)
 
-            # Update W (D-dimensional)
             if lambda_e == 0:
-                W = np.ones(D) / D
+                W = np.ones(N) / N
             else:
-                exp_terms = np.exp(-D * a_3d / (M * lambda_e))
+                exp_terms = np.exp(-a / lambda_e)
                 if np.all(exp_terms == 0) or np.any(np.isnan(exp_terms)):
                     print(f"W calculation failed at iteration {iter + 1}")
                     W = W_prev
                 else:
                     W = exp_terms / np.sum(exp_terms)
 
-            W_full = np.tile(W, N // D)
-
             # Compute the loss function
             loss = 0
             for k in range(K):
                 diff = data - centers[k]
-                loss += np.sum(fuzzypartmat_m[:, k] * np.sum(W_full * (diff ** 2), axis=1))
-            loss = loss / M + (lambda_e / D) * np.sum(W * np.log(np.maximum(W, np.finfo(float).eps)))
+                loss += np.sum(fuzzypartmat_m[:, k] * np.sum(W * (diff ** 2), axis=1))
+            loss = loss / M + lambda_e * np.sum(W * np.log(np.maximum(W, np.finfo(float).eps)))
             loss_history[iter] = loss
 
             if iter > 0 and np.linalg.norm(centers - centers_prev) < tol and np.linalg.norm(W - W_prev) < tol:
                 loss_history = loss_history[:iter + 1]
                 break
 
-        self.centers = jnp.array(centers)
-        self.weights = jnp.array(W)
+        self.centers = centers
+        self.weights = W
 
         return {
             'centers': self.centers,
@@ -187,18 +178,16 @@ class FCMEntropy:
         - membership matrix: shape (M, K) or hard labels (M,)
         """
         assert self.centers is not None and self.weights is not None, "Model not trained yet."
-
-        M, N = data.shape
-        W_full = jnp.tile(self.weights, N // self.D)
+        W = self.weights
 
         def compute_dist(x):
             diffs = self.centers - x  # shape (K, N)
-            dists = jnp.sum(W_full * diffs**2, axis=1)  # shape (K,)
+            dists = jnp.sum(W * diffs**2, axis=1)  # shape (K,)
             return dists
 
-        D_all = jax.vmap(compute_dist)(data)  # shape (M, K)
-        D_all = np.maximum(D_all, np.finfo(float).eps)
-        tmp = D_all ** (-1 / (self.m - 1))
+        dist_all = jax.vmap(compute_dist)(data)  # shape (M, K)
+        dist_all = np.maximum(dist_all, np.finfo(float).eps)
+        tmp = dist_all ** (-1 / (self.m - 1))
         fuzzypartmat = (tmp / np.sum(tmp, axis=1)[:,None])  # shape (M, K)
 
         if hard:

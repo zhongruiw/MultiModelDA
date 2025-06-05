@@ -6,3 +6,4 @@ code/clustering_pseudo.m
 data/TrueData.mat
 /code/__pycache__
 /data
+/figure
