@@ -66,7 +66,7 @@ function [centers, fuzzypartmat, objfcn, W] = fcm_modified(data, num_clusters, o
     end
     disp('Data size:'); disp([M, N]);
 
-    rng('default');
+    % rng('default');
     centers = rand(num_clusters, N) .* range(data) + min(data); % K x 6
     W = ones(1, D) / D; % Initial W is D-dimensional, uniformly distributed
     W_full = repmat(W, 1, round(N/D)); % Expand to N dimensions
@@ -102,8 +102,8 @@ function [centers, fuzzypartmat, objfcn, W] = fcm_modified(data, num_clusters, o
         a_temp = reshape(a, D, N/D);
         a_3d = sum(a_temp, 2)';
         %a_3d = [a(1) + a(4), a(2) + a(5), a(3) + a(6)]; % x, y, z
-        disp(['Iteration ', num2str(iter), ' - a_d (x, y, z):']);
-        disp(a_3d);
+        % disp(['Iteration ', num2str(iter), ' - a_d (x, y, z):']);
+        % disp(a_3d);
 
         % Update W (D-dimensional)
         if lambda_e == 0
@@ -121,8 +121,8 @@ function [centers, fuzzypartmat, objfcn, W] = fcm_modified(data, num_clusters, o
             end
         end
         W_full = repmat(W, 1, round(N/D)); % Expand to N dimensions
-        disp(['Iteration ', num2str(iter), ' - W (x, y, z):']);
-        disp(W);
+        % disp(['Iteration ', num2str(iter), ' - W (x, y, z):']);
+        % disp(W);
 
         % Compute the objective function
         obj = 0;
@@ -138,8 +138,8 @@ function [centers, fuzzypartmat, objfcn, W] = fcm_modified(data, num_clusters, o
             break;
         end
     end
-    disp('Cluster centers:');
-    disp(centers);
+    % disp('Cluster centers:');
+    % disp(centers);
 end
 
 % function [centers, fuzzypartmat, objfcn, W] = fcm_modified(data, num_clusters, options, D, alpha)
