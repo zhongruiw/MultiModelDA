@@ -195,19 +195,24 @@ def plot_grad_norms(grad_norm_log):
 
 
 ###################################################### DA #######################################################    
-def plot_l63_series(dt, sel0, sel1, interv, x_truth, y_truth, z_truth, S, mean, spread, prior_weights, posterior_weights, xlim):
+def plot_l63_series(dt, sel0, sel1, interv,
+                    x_truth, y_truth, z_truth, S,
+                    mean, spread,
+                    prior_weights, posterior_weights,
+                    xlim, warmup=20):
     time = np.arange(sel0 * dt, sel1 * dt, interv * dt)
     var_names = ['X', 'Y', 'Z']
     truth_vars = [x_truth, y_truth, z_truth]
     std = np.sqrt(spread)
 
-    fig = plt.figure(figsize=(10, 8))
+    fig, axes = plt.subplots(4, 1, figsize=(10, 8), sharex=True, gridspec_kw={'height_ratios': [1, 1, 1, 1]})
     lines, labels = [], []
 
+    # Time series plots (X, Y, Z)
     for i in range(3):
-        ax = fig.add_axes([0.06, 0.74 - 0.22 * i, 0.88, 0.15])  # Wider to center under global legend
-        l1, = ax.plot(time, truth_vars[i][sel0:sel1:interv], 'k', linewidth=2, label='Truth')
-        l2, = ax.plot(time, mean[sel0:sel1:interv, i], 'r', linewidth=2, label='Posterior Mean')
+        ax = axes[i]
+        l1, = ax.plot(time, truth_vars[i][sel0:sel1:interv], 'k', linewidth=1.5, label='Truth')
+        l2, = ax.plot(time, mean[sel0:sel1:interv, i], 'r', linewidth=1.5, label='Posterior Mean')
         l3 = ax.fill_between(time,
                              mean[sel0:sel1:interv, i] - std[sel0:sel1:interv, i],
                              mean[sel0:sel1:interv, i] + std[sel0:sel1:interv, i],
@@ -215,22 +220,33 @@ def plot_l63_series(dt, sel0, sel1, interv, x_truth, y_truth, z_truth, S, mean, 
         ax.set_title(var_names[i], fontsize=12)
         ax.tick_params(labelsize=10)
         ax.set_xlim(xlim)
+
         if i == 0:
             lines.extend([l1, l2, l3])
-            labels.extend(['Truth','Posterior Mean','Posterior Spread'])
+            labels.extend(['Truth', 'Posterior Mean', 'Posterior Spread'])
+
+        # Correlation and RMSE annotation
+        truth_i = truth_vars[i][warmup:]
+        mean_i = mean[warmup:, i]
+        corr = np.corrcoef(truth_i, mean_i)[0, 1]
+        rmse = np.sqrt(np.mean((truth_i - mean_i) ** 2))
+        textstr = f'Corr = {corr:.3f}\nRMSE = {rmse:.3f}'
+        ax.text(0.99, 0.94, textstr,
+                transform=ax.transAxes,
+                fontsize=9,
+                verticalalignment='top',
+                horizontalalignment='right',
+                bbox=dict(boxstyle='round', facecolor='white', alpha=0.5))
 
     # Regime plot
-    ax = fig.add_axes([0.06, 0.08, 0.88, 0.15])
+    ax = axes[3]
     l4, = ax.plot(time, S[sel0:sel1:interv], 'k', linewidth=1.5, label='True Regime')
-    lines.append(l4)
-    labels.append('True Regime')
-    # Uncomment below if needed
     l5, = ax.plot(time, prior_weights[sel0:sel1:interv], 'b--', linewidth=1.5, label='Prior Weight')
     l6, = ax.plot(time, posterior_weights[sel0:sel1:interv], 'r--', linewidth=1.5, label='Posterior Weight')
-    lines.extend([l5, l6])
-    labels.extend(['Prior Weight', 'Posterior Weight'])
+    lines.extend([l4, l5, l6])
+    labels.extend(['True Regime', 'Prior Weight', 'Posterior Weight'])
     ax.set_ylim([-0.1, 1.1])
-    ax.set_title('Regime Change', fontsize=12)
+    ax.set_title('Regime', fontsize=12)
     ax.tick_params(labelsize=10)
     ax.set_xlim(xlim)
 
@@ -239,8 +255,52 @@ def plot_l63_series(dt, sel0, sel1, interv, x_truth, y_truth, z_truth, S, mean, 
         handles=lines,
         labels=labels,
         loc='upper center',
-        bbox_to_anchor=(0.5, 0.01),
-        ncol=len(labels),
+        bbox_to_anchor=(0.51, 0.04),
+        ncol=6,
         fontsize=10,
     )
-    # plt.tight_layout(rect=[0, 0, 1, 0.97])
+
+    # fig.tight_layout()  # Leave space for the global legend    
+    fig.tight_layout(rect=[0, 0.03, 1, 0.95])  # leave enough bottom margin
+
+def plot_gmm_pdf_3vars(means_list, stds_list, weights_list, x_ranges=None, num_points=1000, var_names=['X', 'Y', 'Z']):
+    """
+    Plot the PDFs of 1D Gaussian mixtures for three variables in subplots.
+
+    Parameters:
+    - means_list: list of 3 arrays of means for each variable
+    - stds_list: list of 3 arrays of stds for each variable
+    - weights_list: list of 3 arrays of weights for each variable
+    - x_ranges: optional list of 3 (xmin, xmax) tuples; if None, auto-determined
+    - num_points: number of x-points per PDF
+    - var_names: list of variable names for labeling
+    """
+    from scipy.stats import norm
+    fig, axes = plt.subplots(1, 3, figsize=(10,3), sharex=False)
+
+    for i in range(3):
+        means = np.asarray(means_list[i])
+        stds = np.asarray(stds_list[i])
+        weights = np.asarray(weights_list)
+
+        if x_ranges is None or x_ranges[i] is None:
+            xmin = np.min(means - 4 * stds)
+            xmax = np.max(means + 4 * stds)
+        else:
+            xmin, xmax = x_ranges[i]
+
+        x = np.linspace(xmin, xmax, num_points)
+        pdf = np.zeros_like(x)
+        for mu, sigma, w in zip(means, stds, weights):
+            pdf += w * norm.pdf(x, loc=mu, scale=sigma)
+
+        ax = axes[i]
+        ax.plot(x, pdf, 'k')
+        for j, mu in enumerate(means):
+            ax.axvline(mu, linestyle='--', color='k', alpha=0.5, label=f'$\mu_{j}={mu:.2f}$')
+        ax.set_xlabel(f"{var_names[i]}")
+        # ax.set_title(f"GMM PDF of {var_names[i]}")
+        ax.legend(fontsize=8)
+
+    axes[0].set_ylabel("Density")
+    plt.tight_layout()
