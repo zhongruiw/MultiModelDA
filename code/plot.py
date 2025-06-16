@@ -102,67 +102,6 @@ def plot_scatter_weights(score, trueLabels, accuracy_entropy, accuracy_baseline,
 
     plt.tight_layout()
 
-def plot_histogram_comparison(p_hat, q_hat, bin_edges, title='', var_name='x'):
-    bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
-    width = (bin_edges[1] - bin_edges[0]) * 0.4
-
-    plt.figure(figsize=(6, 4))
-    plt.bar(bin_centers - width/2, p_hat, width=width, color='k', label='Truth', alpha=0.7)
-    plt.bar(bin_centers + width/2, q_hat, width=width, color='r', label='Model', alpha=0.7)
-    
-    plt.xlabel(f'{var_name}')
-    plt.ylabel('Probability')
-    plt.title(title or f'Histogram comparison for {var_name}')
-    plt.legend()
-    plt.grid(True, linestyle='--', alpha=0.4)
-    plt.tight_layout()
-
-def plot_3d_histogram(p, edges, title='3D Histogram', threshold=0.001):
-    """
-    Plot a 3D voxel representation of a 3D joint histogram using bin edges.
-    
-    Parameters:
-    - p: 3D numpy array of histogram probabilities
-    - edges: list of 3 arrays for bin edges in x, y, z
-    - title: plot title
-    - threshold: minimum density to display
-    """
-    from mpl_toolkits.mplot3d import Axes3D
-
-    # Only show voxels above threshold
-    filled = p > threshold
-    values = p[filled] / p.max()
-
-    # Get bin centers
-    x_centers = 0.5 * (edges[0][:-1] + edges[0][1:])
-    y_centers = 0.5 * (edges[1][:-1] + edges[1][1:])
-    z_centers = 0.5 * (edges[2][:-1] + edges[2][1:])
-    
-    # Build 3D grid of centers
-    X, Y, Z = np.meshgrid(x_centers, y_centers, z_centers, indexing='ij')
-
-    # Extract coordinates where filled
-    x_vals = X[filled]
-    y_vals = Y[filled]
-    z_vals = Z[filled]
-
-    # Prepare color array
-    facecolors = plt.cm.gist_gray(values)
-
-    fig = plt.figure(figsize=(5, 5))
-    ax = fig.add_subplot(111, projection='3d')
-    ax.set_title(title)
-
-    # Plot each voxel manually as a cube
-    size = (edges[0][1] - edges[0][0])  # assume equal-sized bins
-    for (x, y, z, color) in zip(x_vals, y_vals, z_vals, facecolors):
-        ax.bar3d(x, y, z, size, size, size, color=color, edgecolor='k', alpha=0.5)
-
-    ax.set_xlabel('x')
-    ax.set_ylabel('y')
-    ax.set_zlabel('z')
-    plt.tight_layout()
-
 def plot_loss(loss_list):
     plt.figure(figsize=(4, 3))
     plt.plot(loss_list)
@@ -199,7 +138,7 @@ def plot_l63_series(dt, sel0, sel1, interv,
                     x_truth, y_truth, z_truth, S,
                     mean, spread,
                     prior_weights, posterior_weights,
-                    xlim, warmup=20):
+                    xlim, warmup=20, prior_mean=None, prior_spread=None, obs=None):
     time = np.arange(sel0 * dt, sel1 * dt, interv * dt)
     var_names = ['X', 'Y', 'Z']
     truth_vars = [x_truth, y_truth, z_truth]
@@ -217,6 +156,16 @@ def plot_l63_series(dt, sel0, sel1, interv,
                              mean[sel0:sel1:interv, i] - std[sel0:sel1:interv, i],
                              mean[sel0:sel1:interv, i] + std[sel0:sel1:interv, i],
                              color='r', alpha=0.2, label='Spread')
+        if prior_mean is not None:
+            prior_std = np.sqrt(prior_spread)
+            ax.plot(time, prior_mean[sel0:sel1:interv, i], 'b', linewidth=1.5, label='Prior Mean')
+            ax.fill_between(time,
+                             prior_mean[sel0:sel1:interv, i] - prior_std[sel0:sel1:interv, i],
+                             prior_mean[sel0:sel1:interv, i] + prior_std[sel0:sel1:interv, i],
+                             color='b', alpha=0.2, label='Prior Spread')
+        if obs is not None:
+            ax.plot(time, obs[sel0:sel1:interv, i], 'g', linewidth=1.5, label='Obs')
+
         ax.set_title(var_names[i], fontsize=12)
         ax.tick_params(labelsize=10)
         ax.set_xlim(xlim)
@@ -229,7 +178,7 @@ def plot_l63_series(dt, sel0, sel1, interv,
         truth_i = truth_vars[i][warmup:]
         mean_i = mean[warmup:, i]
         corr = np.corrcoef(truth_i, mean_i)[0, 1]
-        rmse = np.sqrt(np.mean((truth_i - mean_i) ** 2))
+        rmse = np.mean(np.sqrt((truth_i - mean_i) ** 2)) # time mean rmse
         textstr = f'Corr = {corr:.3f}\nRMSE = {rmse:.3f}'
         ax.text(0.99, 0.94, textstr,
                 transform=ax.transAxes,
@@ -304,3 +253,95 @@ def plot_gmm_pdf_3vars(means_list, stds_list, weights_list, x_ranges=None, num_p
 
     axes[0].set_ylabel("Density")
     plt.tight_layout()
+
+
+######################################### Model Evaluation ###########################################    
+def plot_all_histograms_univar(hist_data, variables=['x', 'y', 'z'], figsize=(12, 4)):
+    n_regimes = len(hist_data[variables[0]])
+    n_vars = len(variables)
+
+    fig, axes = plt.subplots(n_vars, n_regimes, figsize=figsize, squeeze=False)
+
+    for i in range(n_regimes):
+        for j, var in enumerate(variables):
+            p_hat, q_hat, bin_edges, regime_id, model_id = hist_data[var][i]
+            ax = axes[j][i]
+            bin_edges = bin_edges[0]
+            bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+            width = (bin_edges[1] - bin_edges[0]) * 0.4
+
+            ax.bar(bin_centers - width/2, p_hat, width=width, color='k', label='Truth', alpha=0.7)
+            ax.bar(bin_centers + width/2, q_hat, width=width, color='r', label='Model', alpha=0.7)
+
+            ax.set_title(f'Regime {regime_id}, Model {model_id}', fontsize=10)
+            if i == 0:
+                ax.set_ylabel(var)
+
+            if i == 0 and j == 0:
+                ax.legend(fontsize=6.5)
+
+    fig.tight_layout()
+    return fig
+
+def plot_histogram_comparison(p_hat, q_hat, bin_edges, title='', var_name='x'):
+    bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+    width = (bin_edges[1] - bin_edges[0]) * 0.4
+
+    plt.figure(figsize=(6, 4))
+    plt.bar(bin_centers - width/2, p_hat, width=width, color='k', label='Truth', alpha=0.7)
+    plt.bar(bin_centers + width/2, q_hat, width=width, color='r', label='Model', alpha=0.7)
+    
+    plt.xlabel(f'{var_name}')
+    plt.ylabel('Probability')
+    plt.title(title or f'Histogram comparison for {var_name}')
+    plt.legend()
+    plt.grid(True, linestyle='--', alpha=0.4)
+    plt.tight_layout()
+
+def plot_3d_histogram(p, edges, title='3D Histogram', threshold=0.001):
+    """
+    Plot a 3D voxel representation of a 3D joint histogram using bin edges.
+    
+    Parameters:
+    - p: 3D numpy array of histogram probabilities
+    - edges: list of 3 arrays for bin edges in x, y, z
+    - title: plot title
+    - threshold: minimum density to display
+    """
+    from mpl_toolkits.mplot3d import Axes3D
+
+    # Only show voxels above threshold
+    filled = p > threshold
+    values = p[filled] / p.max()
+
+    # Get bin centers
+    x_centers = 0.5 * (edges[0][:-1] + edges[0][1:])
+    y_centers = 0.5 * (edges[1][:-1] + edges[1][1:])
+    z_centers = 0.5 * (edges[2][:-1] + edges[2][1:])
+    
+    # Build 3D grid of centers
+    X, Y, Z = np.meshgrid(x_centers, y_centers, z_centers, indexing='ij')
+
+    # Extract coordinates where filled
+    x_vals = X[filled]
+    y_vals = Y[filled]
+    z_vals = Z[filled]
+
+    # Prepare color array
+    facecolors = plt.cm.gist_gray(values)
+
+    fig = plt.figure(figsize=(5, 5))
+    ax = fig.add_subplot(111, projection='3d')
+    ax.set_title(title)
+
+    # Plot each voxel manually as a cube
+    size = (edges[0][1] - edges[0][0])  # assume equal-sized bins
+    for (x, y, z, color) in zip(x_vals, y_vals, z_vals, facecolors):
+        ax.bar3d(x, y, z, size, size, size, color=color, edgecolor='k', alpha=0.5)
+
+    ax.set_xlabel('x')
+    ax.set_ylabel('y')
+    ax.set_zlabel('z')
+    plt.tight_layout()
+
+

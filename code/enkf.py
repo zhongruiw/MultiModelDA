@@ -109,7 +109,7 @@ def stochastic_enkf(ensemble_size, nobsgrid, xens, Hk, obs_error_var, localize, 
     return xens
 
 
-def eakf(ensemble_size, nobs, xens, Hk, obs_error_var, localize, CMat, obs):
+def eakf(ensemble_size, nobs, xens, Hk, obs_error_vars, localize, CMat, obs):
     """
     Ensemble Adjustment Kalman Filter (EAKF)
 
@@ -118,7 +118,7 @@ def eakf(ensemble_size, nobs, xens, Hk, obs_error_var, localize, CMat, obs):
         nobs (int): Number of observations.
         xens (np.ndarray): Ensemble matrix of shape (ensemble_size, nmod).
         Hk (np.ndarray): Observation operator matrix of shape (nobs, nmod).
-        obs_error_var (float): Observation error variance.
+        obs_error_vars (float or array): Observation error variance(s).
         localize (int): Flag for localization (1 for applying localization, 0 otherwise).
         CMat (np.ndarray): Localization matrix of shape (nobs, nmod).
         obs (np.ndarray): Observations of shape (nobs,).
@@ -126,8 +126,11 @@ def eakf(ensemble_size, nobs, xens, Hk, obs_error_var, localize, CMat, obs):
     Returns:
         np.ndarray: Updated ensemble matrix.
     """
+    if np.isscalar(obs_error_vars): 
+        obs_error_vars = np.array([obs_error_vars]*nobs)
     rn = 1.0 / (ensemble_size - 1)
     for iobs in range(0, nobs):
+        obs_error_var = obs_error_vars[iobs]
         xmean = np.mean(xens, axis=0) 
         xprime = xens - xmean
         hxens = Hk[iobs, :] @ xens.T

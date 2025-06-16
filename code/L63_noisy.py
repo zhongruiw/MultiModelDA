@@ -72,15 +72,15 @@ class L63RegimeModel:
 
 if __name__ == '__main__':
     # Parameters
-    T = 1e3
+    T = 2e3
     dt = 0.005
-    dt_obs = 0.5
+    dt_obs = 0.25
     N = int(round(T / dt))
     N_gap = int(round(dt_obs / dt))
     sigma_x = np.sqrt(2.0)
     sigma_y = 1.0
     sigma_z = 1.0
-    sigma_obs = 2 * np.sqrt(2)
+    sigma_obs = 4
 
     # Regime switching (Continuous-time Markov process)
     regimes = [
@@ -94,7 +94,7 @@ if __name__ == '__main__':
         [1, 0, 0],
         [0.8, 0.2, 0]
     ])
-    holding_parameters = np.array([0.2, 0.3, 0.4])
+    holding_parameters = np.array([0.1, 0.2, 0.4])
     rate_matrix = np.zeros_like(routing_matrix)
     for i in range(n_regimes):
         rate_matrix[i, :] = routing_matrix[i, :] * holding_parameters[i]
