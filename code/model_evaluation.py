@@ -64,15 +64,23 @@ def evaluate_model(Model, params, S_obs, truth, Nt, N_gap, dt, lead_time, n_mode
     models, sigma_x, sigma_y, sigma_z = params
     holding_parameters = np.array([0.1, 0.1, 0.1]) # # arbitrary values since transition is forbidden from the routing matrix
     score_matrix = np.zeros((n_models, n_regimes))
-    for model_id in range(n_models):    
-        routing_matrix = np.zeros((n_models, n_models))
-        routing_matrix[:, model_id] = 1
-        model = Model(models, routing_matrix, holding_parameters, sigma_x, sigma_y, sigma_z)
-        for regime_id in range(n_regimes):
-            idx = np.where(S_obs == regime_id)[0] + lead_time
-            idx = idx[idx < Nt]  # avoid index out of bounds
-            X0 = truth[idx-lead_time]
-            A_true = truth[idx]
+    hist_data = {
+    'x': [],
+    'y': [],
+    'z': [],
+    'xyz': []
+    }
+
+    for regime_id in range(n_regimes):
+        idx = np.where(S_obs == regime_id)[0] + lead_time
+        idx = idx[idx < Nt]  # avoid index out of bounds
+        X0 = truth[idx-lead_time]
+        A_true = truth[idx]
+
+        for model_id in range(n_models):    
+            routing_matrix = np.zeros((n_models, n_models))
+            routing_matrix[:, model_id] = 1
+            model = Model(models, routing_matrix, holding_parameters, sigma_x, sigma_y, sigma_z)
             A_pred = np.zeros_like(A_true)
             Nt_pred = len(idx)
             for i in range(Nt_pred):
@@ -81,21 +89,27 @@ def evaluate_model(Model, params, S_obs, truth, Nt, N_gap, dt, lead_time, n_mode
                 A_pred[i,1] = y1[-1]
                 A_pred[i,2] = z1[-1]
                 
-            # kl_x1, p_x1, q_x1, bins_x1 = evaluate_model_error(A_data=A_true[:,0][:,None], A_model=A_pred[:,0][:,None], bins=30)
-            # kl_y1, p_y1, q_y1, bins_y1 = evaluate_model_error(A_data=A_true[:,1][:,None], A_model=A_pred[:,1][:,None], bins=30)
-            # kl_z1, p_z1, q_z1, bins_z1 = evaluate_model_error(A_data=A_true[:,2][:,None], A_model=A_pred[:,2][:,None], bins=30)
-            kl_xyz_1, p_xyz_1, q_xyz_1, edges_xyz_1 = evaluate_model_error(A_data=A_true, A_model=A_pred, bins=10)
-            model_score = np.exp(-rho*kl_xyz_1) # the constant parameter controls penalty to model errors
+            kl_x1, p_x1, q_x1, bins_x1 = evaluate_model_error(A_data=A_true[:,0][:,None], A_model=A_pred[:,0][:,None], bins=30)
+            kl_y1, p_y1, q_y1, bins_y1 = evaluate_model_error(A_data=A_true[:,1][:,None], A_model=A_pred[:,1][:,None], bins=30)
+            kl_z1, p_z1, q_z1, bins_z1 = evaluate_model_error(A_data=A_true[:,2][:,None], A_model=A_pred[:,2][:,None], bins=30)
+            kl_xyz1, p_xyz1, q_xyz1, edges_xyz1 = evaluate_model_error(A_data=A_true, A_model=A_pred, bins=10)
+            model_score = np.exp(-rho*kl_xyz1) # the constant parameter controls penalty to model errors
             score_matrix[model_id, regime_id] = model_score
+
+            hist_data['x'].append((p_x1, q_x1, bins_x1, regime_id, model_id))
+            hist_data['y'].append((p_y1, q_y1, bins_y1, regime_id, model_id))
+            hist_data['z'].append((p_z1, q_z1, bins_z1, regime_id, model_id))
+            hist_data['xyz'].append((p_xyz1, q_xyz1, edges_xyz1, regime_id, model_id))
+
             if verbose:
-                # print(f"KL divergence for x in regime {regime_id:d}, model {model_id:d}: {kl_x1:.4f}")
-                # print(f"KL divergence for y in regime {regime_id:d}, model {model_id:d}: {kl_y1:.4f}")
-                # print(f"KL divergence for z in regime {regime_id:d}, model {model_id:d}: {kl_z1:.4f}")
-                print(f"KL divergence for (x,y,z) in regime {regime_id:d}, model {model_id:d}: {kl_xyz_1:.4f}")
+                print(f"KL divergence for x in regime {regime_id:d}, model {model_id:d}: {kl_x1:.4f}")
+                print(f"KL divergence for y in regime {regime_id:d}, model {model_id:d}: {kl_y1:.4f}")
+                print(f"KL divergence for z in regime {regime_id:d}, model {model_id:d}: {kl_z1:.4f}")
+                print(f"KL divergence for (x,y,z) in regime {regime_id:d}, model {model_id:d}: {kl_xyz1:.4f}")
                 print(f"model score in regime {regime_id:d}, model {model_id:d}: {model_score:.4e}")
     weight_matrix = score_matrix / np.sum(score_matrix, axis=0)
 
-    return weight_matrix, score_matrix, models
+    return weight_matrix, score_matrix, models, hist_data
 
 
 if __name__ == '__main__':
