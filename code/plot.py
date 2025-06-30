@@ -59,6 +59,327 @@ def plot_trajectories(x_truth, y_truth, z_truth, dt, sel0=10000, sel1=20000, int
     ax7.grid(False)
     plt.tight_layout()
 
+def plot_ou_series_pdf_acf(dt, sel0, sel1, interv, xlim,
+                           ur_list, ui_list, v_list, labels, colors, max_lag=4000):
+    """
+    Plot time series, PDFs (log-scale), and ACFs for ur, ui, and v.
+    Layout: 3 rows (variables), 3 columns (time series | PDF | ACF)
+    
+    Parameters:
+    - *_list: list of arrays of shape (T,)
+    - sel0, sel1: time index range
+    - interv: interval for time series downsampling
+    - xlim: x-axis limits for time plots
+    - ylim: x-axis limits for PDF plots (log x-scale)
+    """
+    from scipy.stats import gaussian_kde, norm
+    from statsmodels.tsa.stattools import acf
+
+    xaxis = np.arange(sel0 * dt, sel1 * dt, interv * dt)
+    lag_axis = dt * np.arange(max_lag + 1)
+
+    fig = plt.figure(figsize=(10, 5))
+    widths = [5, .8, .8]
+    heights = [1, 1, 1]
+    spec = fig.add_gridspec(nrows=3, ncols=3, width_ratios=widths, height_ratios=heights)
+    plt.subplots_adjust(wspace=0.5, hspace=0.6)
+
+    var_names = [r'$u_R$', r'$u_I$', r'$v$']
+    data_groups = [ur_list, ui_list, v_list]
+    legend_lines = []
+    legend_labels = []
+
+    for row, (var_list, var_label) in enumerate(zip(data_groups, var_names)):
+        ax_ts  = fig.add_subplot(spec[row, 0])  # Time series
+        ax_pdf = fig.add_subplot(spec[row, 1])  # PDF
+        ax_acf = fig.add_subplot(spec[row, 2])  # ACF
+
+        for i, data in enumerate(var_list):
+            samples = data[sel0:sel1]
+            series = data[sel0:sel1:interv]
+
+            # --- Time Series ---
+            line_model, = ax_ts.plot(xaxis, series, color=colors[i], label=labels[i])
+            if row == 0 and i == 0:  # only track lines from the first row to avoid duplicates
+                legend_lines.append(line_model)
+                legend_labels.append(labels[i])
+        
+            # --- PDF ---
+            kde = gaussian_kde(samples)
+            x_pdf = np.linspace(samples.min(), samples.max(), 300)
+            p_pdf = kde.evaluate(x_pdf)
+            ax_pdf.plot(p_pdf, x_pdf, color=colors[i])
+            if i == 0:
+                mean, std = samples.mean(), samples.std()
+                gauss = norm.pdf(x_pdf, mean, std)
+                line_gauss, = ax_pdf.plot(gauss, x_pdf, 'k--', label='Gaussian fit')
+                if row == 0:
+                    legend_lines.append(line_gauss)
+                    legend_labels.append('Gaussian fit')
+                
+            # --- ACF ---
+            acf_vals = acf(samples, nlags=max_lag, fft=True)
+            ax_acf.plot(lag_axis, acf_vals, color=colors[i])
+
+        # Axis labels/titles
+        ax_ts.set_xlim(xlim)
+        ax_ts.set_ylabel(var_label)
+        ax_ts.set_xlabel("t")
+        if row == 0:
+            ax_ts.set_title("Time Series")
+
+        # ax_pdf.set_xscale("log", base=10)
+        if row == 0:
+            ax_pdf.set_title("PDF")
+
+        ax_acf.set_xlim(0, lag_axis[-1])
+        # ax_acf.set_xlabel("lag (t)")
+        if row == 0:
+            ax_acf.set_title("ACF")
+
+    # Global legend
+    fig.legend(legend_lines, legend_labels, loc='upper center', bbox_to_anchor=(0.5, 1.02),
+               ncol=len(legend_labels), fontsize=8)
+    plt.tight_layout(rect=[0, 0, 1, 0.97])
+
+def plot_baro_series_pdf_acf(dt, sel0, sel1, interv, xlim,
+                           data_groups, labels, colors, max_lag=4000, var_names = [r'$u_R$', r'$u_I$', r'$v$']):
+    """
+    Plot time series, PDFs (log-scale), and ACFs.
+    Layout: 3 rows (variables), 3 columns (time series | PDF | ACF)
+    
+    Parameters:
+    - *_list: list of arrays of shape (T,)
+    - sel0, sel1: time index range
+    - interv: interval for time series downsampling
+    - xlim: x-axis limits for time plots
+    - ylim: x-axis limits for PDF plots (log x-scale)
+    """
+    from scipy.stats import gaussian_kde, norm
+    from statsmodels.tsa.stattools import acf
+
+    xaxis = np.arange(sel0 * dt, sel1 * dt, interv * dt)
+    lag_axis = dt * np.arange(max_lag + 1)
+
+    fig = plt.figure(figsize=(10, 5))
+    widths = [5, .8, .8]
+    heights = [1, 1, 1]
+    spec = fig.add_gridspec(nrows=3, ncols=3, width_ratios=widths, height_ratios=heights)
+    plt.subplots_adjust(wspace=0.5, hspace=0.6)
+
+    legend_lines = []
+    legend_labels = []
+
+    for row, (var_list, var_label) in enumerate(zip(data_groups, var_names)):
+        ax_ts  = fig.add_subplot(spec[row, 0])  # Time series
+        ax_pdf = fig.add_subplot(spec[row, 1])  # PDF
+        ax_acf = fig.add_subplot(spec[row, 2])  # ACF
+
+        for i, data in enumerate(var_list):
+            samples = data[sel0:sel1]
+            series = data[sel0:sel1:interv]
+
+            # --- Time Series ---
+            line_model, = ax_ts.plot(xaxis, series, color=colors[i], label=labels[i])
+            if row == 0 and i == 0:  # only track lines from the first row to avoid duplicates
+                legend_lines.append(line_model)
+                legend_labels.append(labels[i])
+        
+            # --- PDF ---
+            kde = gaussian_kde(samples)
+            x_pdf = np.linspace(samples.min(), samples.max(), 300)
+            p_pdf = kde.evaluate(x_pdf)
+            ax_pdf.plot(p_pdf, x_pdf, color=colors[i])
+            if i == 0:
+                mean, std = samples.mean(), samples.std()
+                gauss = norm.pdf(x_pdf, mean, std)
+                line_gauss, = ax_pdf.plot(gauss, x_pdf, 'k--', label='Gaussian fit')
+                if row == 0:
+                    legend_lines.append(line_gauss)
+                    legend_labels.append('Gaussian fit')
+                
+            # --- ACF ---
+            acf_vals = acf(samples, nlags=max_lag, fft=True)
+            ax_acf.plot(lag_axis, acf_vals, color=colors[i])
+
+        # Axis labels/titles
+        ax_ts.set_xlim(xlim)
+        ax_ts.set_ylabel(var_label)
+        ax_ts.set_xlabel("t")
+        if row == 0:
+            ax_ts.set_title("Time Series")
+
+        # ax_pdf.set_xscale("log", base=10)
+        if row == 0:
+            ax_pdf.set_title("PDF")
+
+        ax_acf.set_xlim(0, lag_axis[-1])
+        # ax_acf.set_xlabel("lag (t)")
+        if row == 0:
+            ax_acf.set_title("ACF")
+
+    # Global legend
+    fig.legend(legend_lines, legend_labels, loc='upper center', bbox_to_anchor=(0.5, 1.02),
+               ncol=len(legend_labels), fontsize=8)
+    plt.tight_layout(rect=[0, 0, 1, 0.97])
+    
+def plot_baro_series(dt, sel0, sel1, interv, xlim,
+                           data_groups, v_field, T_field, labels, colors, var_names = [r'$U$', r'$\hat{v}_1$', r'$\hat{T}_1$']):
+    """
+    Plot time series, PDFs (log-scale), and ACFs.
+    Layout: 3 rows (variables), 3 columns (time series | PDF | ACF)
+    
+    Parameters:
+    - *_list: list of arrays of shape (T,)
+    - sel0, sel1: time index range
+    - interv: interval for time series downsampling
+    - xlim: x-axis limits for time plots
+    - ylim: x-axis limits for PDF plots (log x-scale)
+    """
+
+    xaxis = np.arange(sel0 * dt, sel1 * dt, interv * dt)
+
+    fig = plt.figure(figsize=(10, 7))
+    widths = [1]
+    heights = [1, 1, 1, 1, 1]
+    spec = fig.add_gridspec(nrows=5, ncols=1, width_ratios=widths, height_ratios=heights)
+    plt.subplots_adjust(wspace=0.5, hspace=0.6)
+
+    legend_lines = []
+    legend_labels = []
+
+    for row, (var_list, var_label) in enumerate(zip(data_groups, var_names)):
+        ax_ts  = fig.add_subplot(spec[row, 0])  # Time series
+
+        for i, data in enumerate(var_list):
+            samples = data[sel0:sel1]
+            series = data[sel0:sel1:interv]
+
+            # --- Time Series ---
+            line_model, = ax_ts.plot(xaxis, series, color=colors[i], label=labels[i], linewidth=.5)
+            if row == 0 and i == 0:  # only track lines from the first row to avoid duplicates
+                legend_lines.append(line_model)
+                legend_labels.append(labels[i])
+        
+        # Axis labels/titles
+        ax_ts.set_xlim(xlim)
+        ax_ts.set_ylabel(var_label)
+        # ax_ts.set_xlabel("t")
+        if row == 0:
+            ax_ts.set_title("Solutions of the Topographic Barotropic Model")
+
+
+    # --- 4: v(x, t) field ---
+    ax_vfield = fig.add_subplot(spec[3, 0])
+    im1 = ax_vfield.imshow(
+        v_field[sel0:sel1, :].T,
+        origin='lower',
+        aspect='auto',
+        extent=[sel0 * dt, sel1 * dt, 0, np.pi*2],
+        vmin=-10, vmax=10, 
+        cmap='seismic'
+    )
+    ax_vfield.set_ylabel(r'$v$')
+    # fig.colorbar(im1, ax=ax_vfield, shrink=0.9, pad=0.1, fraction=0.005)
+
+    # --- 5: T(x, t) field ---
+    ax_Tfield = fig.add_subplot(spec[4, 0])
+    im2 = ax_Tfield.imshow(
+        T_field[sel0:sel1, :].T,
+        origin='lower',
+        aspect='auto',
+        extent=[sel0 * dt, sel1 * dt, 0, np.pi*2],
+        vmin=-10, vmax=10, 
+        cmap='seismic'
+    )
+    ax_Tfield.set_ylabel(r'$T$')
+    ax_Tfield.set_xlabel("t")
+    # fig.colorbar(im2, ax=ax_Tfield, shrink=0.9, pad=0.01, fraction=0.005)
+
+    plt.tight_layout(rect=[0, 0.01, 1, 1])
+
+    cbar = fig.colorbar(im2, ax=[ax_vfield, ax_Tfield], orientation='horizontal',
+                        location='bottom', pad=0.22, fraction=0.02, aspect=30)
+    # # Global legend
+    # fig.legend(legend_lines, legend_labels, loc='upper center', bbox_to_anchor=(0.5, 1.02),
+    #            ncol=len(legend_labels), fontsize=8)
+    # plt.tight_layout(rect=[0, 0, 1, 0.97])
+
+def plot_pdf_and_joint(v_hat, T_hat, mode=1, log=True):
+    """
+    Plot the log-scale PDF of Re(v_hat_k) and Re(T_hat_k) for given mode,
+    and their joint PDF.
+
+    Parameters:
+    - v_hat: ndarray of shape (N, 2K+1), complex
+    - T_hat: same shape as v_hat
+    - mode: spectral mode k to plot (default is 1)
+    - log: whether to use log-scale on x-axis (default True)
+    """
+    re_vk = v_hat[:, mode].real
+    re_Tk = T_hat[:, mode].real
+
+    fig, axes = plt.subplots(1, 3, figsize=(9, 3))
+
+    # --- 1. PDF of Re(v_hat_k) ---
+    kde_v = gaussian_kde(re_vk)
+    x_v = np.linspace(re_vk.min(), re_vk.max(), 300)
+    p_v = kde_v.evaluate(x_v)
+    mean_v, std_v = re_vk.mean(), re_vk.std()
+    gauss_v = norm.pdf(x_v, mean_v, std_v)
+
+    axes[0].plot(x_v, p_v, label="Truth", color='k')
+    axes[0].plot(x_v, gauss_v, 'k--', label="Gaussian fit")
+    axes[0].set_title(f'PDF of Re($\\hat{{v}}_{mode}$)')
+    axes[0].legend()
+    axes[0].set_ylim(1e-1, 1.2)
+    if log:
+        axes[0].set_yscale("log")
+
+    # --- 2. PDF of Re(T_hat_k) ---
+    kde_T = gaussian_kde(re_Tk)
+    x_T = np.linspace(re_Tk.min(), re_Tk.max(), 300)
+    p_T = kde_T.evaluate(x_T)
+    mean_T, std_T = re_Tk.mean(), re_Tk.std()
+    gauss_T = norm.pdf(x_T, mean_T, std_T)
+
+    axes[1].plot(x_T, p_T, label="Truth", color='k')
+    axes[1].plot(x_T, gauss_T, 'k--', label="Gaussian fit")
+    axes[1].set_title(f'PDF of Re($\\hat{{T}}_{mode}$)')
+    axes[1].legend()
+    axes[1].set_ylim(1e-1, 2)
+    if log:
+        axes[1].set_yscale("log")
+
+    # --- 3. Joint PDF heatmap ---
+    xy = np.vstack([re_vk, re_Tk])
+    kde_joint = gaussian_kde(xy)
+    X, Y = np.meshgrid(
+        np.linspace(re_vk.min(), re_vk.max(), 100),
+        np.linspace(re_Tk.min(), re_Tk.max(), 100)
+    )
+    Z = kde_joint(np.vstack([X.ravel(), Y.ravel()])).reshape(X.shape)
+
+    im = axes[2].contourf(X, Y, Z, levels=50, cmap='binary')
+    axes[2].set_title(f'Joint PDF of Re($\\hat{{v}}_{mode}$) and Re($\\hat{{T}}_{mode}$)')
+    axes[2].set_xlabel(f'Re($\\hat{{v}}_{mode}$)')
+    axes[2].set_ylabel(f'Re($\\hat{{T}}_{mode}$)')
+    # fig.colorbar(im, ax=axes[2])
+
+    # # --- 3. Joint PDF heatmap via histogram ---
+    # ax = axes[2]
+    # hist = ax.hist2d(
+    #     re_vk, re_Tk,
+    #     bins=50,
+    #     density=True,       # normalize to get empirical joint PDF
+    #     cmap='binary'
+    # )
+    # ax.set_title(f'Joint PDF of Re($\\hat{{v}}_{mode}$) and Re($\\hat{{T}}_{mode}$)')
+    # ax.set_xlabel(f'Re($\\hat{{v}}_{mode}$)')
+    # ax.set_ylabel(f'Re($\\hat{{T}}_{mode}$)')
+
+    plt.tight_layout()
+    
 
 ################################################### Clustering #####################################################    
 def plot_scatter_weights(score, trueLabels, accuracy_entropy, accuracy_baseline, W_entropy, W_baseline,correct_entropy, correct_baseline, signalDim):
@@ -183,6 +504,7 @@ def plot_l63_series(dt, sel0, sel1, interv,
         ax.text(0.99, 0.94, textstr,
                 transform=ax.transAxes,
                 fontsize=9,
+                fontweight='bold',
                 verticalalignment='top',
                 horizontalalignment='right',
                 bbox=dict(boxstyle='round', facecolor='white', alpha=0.5))
@@ -194,6 +516,94 @@ def plot_l63_series(dt, sel0, sel1, interv,
     l6, = ax.plot(time, posterior_weights[sel0:sel1:interv], 'r--', linewidth=1.5, label='Posterior Weight')
     lines.extend([l4, l5, l6])
     labels.extend(['True Regime', 'Prior Weight', 'Posterior Weight'])
+    ax.set_ylim([-0.1, 1.1])
+    ax.set_title('Regime', fontsize=12)
+    ax.tick_params(labelsize=10)
+    ax.set_xlim(xlim)
+
+    # Global legend
+    fig.legend(
+        handles=lines,
+        labels=labels,
+        loc='upper center',
+        bbox_to_anchor=(0.51, 0.04),
+        ncol=6,
+        fontsize=10,
+    )
+
+    # fig.tight_layout()  # Leave space for the global legend    
+    fig.tight_layout(rect=[0, 0.03, 1, 0.95])  # leave enough bottom margin
+
+def plot_ou_series(dt, sel0, sel1, interv,
+                    ur_truth, ui_truth, v_truth, 
+                    mean=None, spread=None,
+                    prior_weights=None, posterior_weights=None,
+                    xlim=None, warmup=20, prior_mean=None, prior_spread=None, obs=None, S=None):
+    time = np.arange(sel0 * dt, sel1 * dt, interv * dt)
+    var_names = ['uR', 'uI', 'v']
+    truth_vars = [ur_truth, ui_truth, v_truth]
+    std = np.sqrt(spread)
+
+    fig, axes = plt.subplots(4, 1, figsize=(10, 8), sharex=True, gridspec_kw={'height_ratios': [1, 1, 1, 1]})
+    lines, labels = [], []
+
+    # Time series plots 
+    for i in range(3):
+        ax = axes[i]
+        l1, = ax.plot(time, truth_vars[i][sel0:sel1:interv], 'k', linewidth=1.5, label='Truth')
+        l2, = ax.plot(time, mean[sel0:sel1:interv, i], 'r', linewidth=1.5, label='Posterior Mean')
+        l3 = ax.fill_between(time,
+                             mean[sel0:sel1:interv, i] - std[sel0:sel1:interv, i],
+                             mean[sel0:sel1:interv, i] + std[sel0:sel1:interv, i],
+                             color='r', alpha=0.2, label='Spread')
+        if prior_mean is not None:
+            prior_std = np.sqrt(prior_spread)
+            ax.plot(time, prior_mean[sel0:sel1:interv, i], 'b', linewidth=1.5, label='Prior Mean')
+            ax.fill_between(time,
+                             prior_mean[sel0:sel1:interv, i] - prior_std[sel0:sel1:interv, i],
+                             prior_mean[sel0:sel1:interv, i] + prior_std[sel0:sel1:interv, i],
+                             color='b', alpha=0.2, label='Prior Spread')
+        if obs is not None:
+            ax.plot(time, obs[sel0:sel1:interv, i], 'g', linewidth=1.5, label='Obs')
+
+        ax.set_title(var_names[i], fontsize=12)
+        ax.tick_params(labelsize=10)
+        ax.set_xlim(xlim)
+
+        if i == 0:
+            lines.extend([l1, l2, l3])
+            labels.extend(['Truth', 'Posterior Mean', 'Posterior Spread'])
+
+        if i < 2:
+            # Correlation and RMSE annotation
+            truth_i = truth_vars[i][warmup:]
+            mean_i = mean[warmup:, i]
+            corr = np.corrcoef(truth_i, mean_i)[0, 1]
+            rmse = np.mean(np.sqrt((truth_i - mean_i) ** 2)) # time mean rmse
+            textstr = f'Corr = {corr:.3f}\nRMSE = {rmse:.3f}'
+            ax.text(0.99, 0.94, textstr,
+                    transform=ax.transAxes,
+                    fontsize=9,
+                    fontweight='bold',
+                    verticalalignment='top',
+                    horizontalalignment='right',
+                    bbox=dict(boxstyle='round', facecolor='white', alpha=0.5))
+
+    # Regime plot
+    ax = axes[3]
+
+    if S is not None:
+        l4, = ax.plot(time, S[sel0:sel1:interv], 'k', linewidth=1.5, label='True Regime')
+        lines.extend([l4])
+        labels.extend(['True Regime'])
+    if prior_weights is not None:
+        l5, = ax.plot(time, prior_weights[sel0:sel1:interv], 'b--', linewidth=1.5, label='Prior Weight')
+        lines.extend([l5])
+        labels.extend(['Prior Weight'])
+    if posterior_weights is not None:
+        l6, = ax.plot(time, posterior_weights[sel0:sel1:interv], 'r--', linewidth=1.5, label='Posterior Weight')
+        lines.extend([l6])
+        labels.extend(['Posterior Weight'])
     ax.set_ylim([-0.1, 1.1])
     ax.set_title('Regime', fontsize=12)
     ax.tick_params(labelsize=10)

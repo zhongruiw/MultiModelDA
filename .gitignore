@@ -7,3 +7,5 @@ data/TrueData.mat
 /code/__pycache__
 /data
 /figure
+/code/code_baro_condGau
+/code/matlab
