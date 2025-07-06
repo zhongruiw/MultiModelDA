@@ -132,7 +132,7 @@ class FCMEntropy:
             a = np.zeros(N)
             for d in range(N):
                 diff = data[:, d][:, None] - centers[:, d][None, :]
-                a[d] = np.sum(fuzzypartmat_m * (diff ** 2))
+                a[d] = np.sum(fuzzypartmat_m * (diff ** 2)) / M
 
             if lambda_e == 0:
                 W = np.ones(N) / N
@@ -193,3 +193,68 @@ class FCMEntropy:
         if hard:
             return jnp.argmax(fuzzypartmat, axis=1)
         return fuzzypartmat
+
+def reorder_clusters_by_centers(learned_centers, reference_centers):
+    """
+    Reorders learned cluster centers to best match the reference centers.
+    Returns perm (list) such that learned_centers[perm] aligns with reference_centers
+    """
+    from scipy.optimize import linear_sum_assignment
+    K = reference_centers.shape[0]
+    cost_matrix = np.zeros((K, K))
+    for i in range(K):
+        for j in range(K):
+            cost_matrix[i, j] = np.linalg.norm(reference_centers[i] - learned_centers[j])
+    row_ind, col_ind = linear_sum_assignment(cost_matrix)
+    return col_ind 
+
+def denoise_and_extract_slices(S_obs, data, min_duration=3):
+    """
+    Denoise short-lived regime switches and extract data slices for each regime label.
+
+    Args:
+        S_obs: np.ndarray of shape (T,), integer regime labels (e.g., 0,1,2,...)
+        data: np.ndarray of shape (T, D), associated time-series data
+        min_duration: minimum segment length for regime to be considered valid
+
+    Returns:
+        S_clean: np.ndarray of shape (T,), denoised regime labels
+        slices_by_regime: dict {regime_label: list of np.ndarrays of shape (seg_len, D)}
+        segments_by_regime: dict {regime_label: list of (start, end) indices}
+    """
+    from collections import defaultdict
+    assert len(S_obs) == len(data), "S_obs and data must match in length"
+    S_obs = np.asarray(S_obs)
+    T = len(S_obs)
+    S_clean = S_obs.copy()
+
+    # Step 1: Detect original boundaries
+    change_points = np.where(np.diff(S_obs, prepend=S_obs[0]) != 0)[0]
+    boundaries = np.concatenate(([0], change_points, [T]))
+
+    # Step 2: Denoising - smooth short-lived regimes
+    for i in range(1, len(boundaries) - 1):
+        start, end = boundaries[i], boundaries[i + 1]
+        duration = end - start
+        if duration < min_duration:
+            prev_label = S_clean[boundaries[i - 1]]
+            S_clean[start:end] = prev_label
+
+    # Step 3: Re-segment cleaned sequence
+    change_points = np.where(np.diff(S_clean, prepend=S_clean[0]) != 0)[0]
+    boundaries = np.concatenate(([0], change_points, [T]))
+
+    slices_by_regime = defaultdict(list)
+    segments_by_regime = defaultdict(list)
+
+    for i in range(len(boundaries) - 1):
+        start, end = boundaries[i], boundaries[i + 1]
+        label = int(S_clean[start])
+        slices_by_regime[label].append(data[start:end])
+        segments_by_regime[label].append((start, end))
+
+    return S_clean, slices_by_regime, segments_by_regime
+
+def zero_crossing_rate(signal):
+    '''signal of shape (B, N)'''
+    return ((signal[:, :-1] * signal[:, 1:]) < 0).sum(axis=1) / signal.shape[1]

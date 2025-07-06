@@ -305,65 +305,161 @@ def plot_baro_series(dt, sel0, sel1, interv, xlim,
     #            ncol=len(legend_labels), fontsize=8)
     # plt.tight_layout(rect=[0, 0, 1, 0.97])
 
-def plot_pdf_and_joint(v_hat, T_hat, mode=1, log=True):
+def plot_baro_series_comparison(dt, sel0, sel1, interv, xlim,
+                     data_groups, v_fields, T_fields, labels, colors,
+                     var_names=[r'$U$', r'$\hat{v}_1$', r'$\hat{T}_1$'], line_width=1):
     """
-    Plot the log-scale PDF of Re(v_hat_k) and Re(T_hat_k) for given mode,
+    Plot time series and spatiotemporal fields v(x,t), T(x,t) for multiple methods.
+    Layout: (3 time series) + (3 v fields) + (3 T fields)
+    """
+    plt.rcParams['xtick.labelsize'] = 8
+    plt.rcParams['ytick.labelsize'] = 8
+    n_methods = len(v_fields)
+    total_rows = 3 + 2 * n_methods  # 3 time series + n_methods v fields + n_methods T fields
+    time_axis = np.arange(sel0 * dt, sel1 * dt, interv * dt)
+
+    fig, axes = plt.subplots(total_rows, 1, figsize=(10, 1.3 * total_rows), sharex=False)
+    plt.subplots_adjust(hspace=0.2)
+
+    legend_lines = []
+    legend_labels = []
+
+    # --- Time series plots (top 3 rows) ---
+    for i in range(3):
+        ax = axes[i]
+        for j, data in enumerate(data_groups[i]):
+            ts = data[sel0:sel1:interv]
+            line, = ax.plot(time_axis, ts, color=colors[j], linewidth=line_width)
+            if i == 0:
+                legend_lines.append(line)
+                legend_labels.append(labels[j])
+        ax.set_ylabel(var_names[i])
+        ax.set_xlim(xlim)
+
+    # --- v(x,t) fields ---
+    for i in range(n_methods):
+        ax = axes[3 + i]
+        im_v = ax.imshow(
+            v_fields[i][sel0:sel1].T,
+            origin='lower',
+            aspect='auto',
+            extent=[sel0 * dt, sel1 * dt, 0, 2 * np.pi],
+            vmin=-10, vmax=10,
+            cmap='seismic'
+        )
+        ax.set_ylabel(r"$x$")
+        # if i == 0:
+        #     ax.annotate(r"$v(x,t)$", xy=(0.5, 1.02), xycoords='axes fraction',
+        #                 fontsize=11, ha='center', va='bottom', fontweight='bold')
+
+        ax.text(0.995, 0.95, labels[i],
+                transform=ax.transAxes,
+                fontsize=10,
+                fontweight='bold',
+                va='top', ha='right',
+                bbox=dict(facecolor='white', alpha=0.2, edgecolor='none'))
+
+    # --- T(x,t) fields ---
+    for i in range(n_methods):
+        ax = axes[3 + n_methods + i]
+        im_T = ax.imshow(
+            T_fields[i][sel0:sel1].T,
+            origin='lower',
+            aspect='auto',
+            extent=[sel0 * dt, sel1 * dt, 0, 2 * np.pi],
+            vmin=-10, vmax=10,
+            cmap='seismic'
+        )
+        ax.set_ylabel(r"$x$")
+        # if i == 0:
+        #     ax.annotate(r"$T(x,t)$", xy=(0.5, 1.02), xycoords='axes fraction',
+        #                 fontsize=11, ha='center', va='bottom', fontweight='bold')
+
+        if i == n_methods - 1:
+            ax.set_xlabel(r"$t$")
+        ax.text(0.995, 0.95, labels[i],
+        transform=ax.transAxes,
+        fontsize=10,
+        fontweight='bold',
+        va='top', ha='right',
+        bbox=dict(facecolor='white', alpha=0.2, edgecolor='none'))
+
+    # Add row labels using fig.text (global positioning)
+    fig.text(0.5, 1 - (3.245) / total_rows, r"$v(x,t)$", fontsize=12, fontweight='bold', va='center', ha='left')
+    fig.text(0.5, 1 - (5.754) / total_rows, r"$T(x,t)$", fontsize=12, fontweight='bold', va='center', ha='left')
+
+    fig.suptitle("Free Forecast using LSTM model(s) at lead time $t=1$", fontsize=12, y=0.96)
+
+    # --- Global legend (placed just below title) ---
+    fig.legend(
+        legend_lines, legend_labels,
+        loc='upper center',
+        bbox_to_anchor=(0.5, 0.945),  # slightly below the title
+        ncol=len(labels),
+        fontsize=9
+    )
+    plt.tight_layout(rect=[0, 0.01, 1, 0.96], pad=1.3)  # leave space for title and legend
+
+    # --- Global colorbar (for T) ---
+    cbar = fig.colorbar(im_T, ax=axes, location='bottom', pad=0.045, fraction=0.008, aspect=30)
+
+def plot_pdf_and_joint(var1, var2, var_names, ylims, log=True):
+    """
+    Plot the log-scale PDF of var1 and var2 for given mode,
     and their joint PDF.
 
     Parameters:
-    - v_hat: ndarray of shape (N, 2K+1), complex
-    - T_hat: same shape as v_hat
+    - var1: ndarray of shape (N,), real
+    - var2: same shape as var1
     - mode: spectral mode k to plot (default is 1)
     - log: whether to use log-scale on x-axis (default True)
     """
-    re_vk = v_hat[:, mode].real
-    re_Tk = T_hat[:, mode].real
-
+    from scipy.stats import gaussian_kde, norm
     fig, axes = plt.subplots(1, 3, figsize=(9, 3))
 
-    # --- 1. PDF of Re(v_hat_k) ---
-    kde_v = gaussian_kde(re_vk)
-    x_v = np.linspace(re_vk.min(), re_vk.max(), 300)
+    # --- 1. PDF of var1 ---
+    kde_v = gaussian_kde(var1)
+    x_v = np.linspace(var1.min(), var1.max(), 300)
     p_v = kde_v.evaluate(x_v)
-    mean_v, std_v = re_vk.mean(), re_vk.std()
+    mean_v, std_v = var1.mean(), var1.std()
     gauss_v = norm.pdf(x_v, mean_v, std_v)
 
     axes[0].plot(x_v, p_v, label="Truth", color='k')
     axes[0].plot(x_v, gauss_v, 'k--', label="Gaussian fit")
-    axes[0].set_title(f'PDF of Re($\\hat{{v}}_{mode}$)')
+    axes[0].set_title(f'PDF of {var_names[0]}')
     axes[0].legend()
-    axes[0].set_ylim(1e-1, 1.2)
+    axes[0].set_ylim(ylims[0])
     if log:
         axes[0].set_yscale("log")
 
-    # --- 2. PDF of Re(T_hat_k) ---
-    kde_T = gaussian_kde(re_Tk)
-    x_T = np.linspace(re_Tk.min(), re_Tk.max(), 300)
+    # --- 2. PDF of var2 ---
+    kde_T = gaussian_kde(var2)
+    x_T = np.linspace(var2.min(), var2.max(), 300)
     p_T = kde_T.evaluate(x_T)
-    mean_T, std_T = re_Tk.mean(), re_Tk.std()
+    mean_T, std_T = var2.mean(), var2.std()
     gauss_T = norm.pdf(x_T, mean_T, std_T)
 
     axes[1].plot(x_T, p_T, label="Truth", color='k')
     axes[1].plot(x_T, gauss_T, 'k--', label="Gaussian fit")
-    axes[1].set_title(f'PDF of Re($\\hat{{T}}_{mode}$)')
+    axes[1].set_title(f'PDF of {var_names[1]}')
     axes[1].legend()
-    axes[1].set_ylim(1e-1, 2)
+    axes[1].set_ylim(ylims[1])
     if log:
         axes[1].set_yscale("log")
 
     # --- 3. Joint PDF heatmap ---
-    xy = np.vstack([re_vk, re_Tk])
+    xy = np.vstack([var1, var2])
     kde_joint = gaussian_kde(xy)
     X, Y = np.meshgrid(
-        np.linspace(re_vk.min(), re_vk.max(), 100),
-        np.linspace(re_Tk.min(), re_Tk.max(), 100)
+        np.linspace(var1.min(), var1.max(), 100),
+        np.linspace(var2.min(), var2.max(), 100)
     )
     Z = kde_joint(np.vstack([X.ravel(), Y.ravel()])).reshape(X.shape)
 
     im = axes[2].contourf(X, Y, Z, levels=50, cmap='binary')
-    axes[2].set_title(f'Joint PDF of Re($\\hat{{v}}_{mode}$) and Re($\\hat{{T}}_{mode}$)')
-    axes[2].set_xlabel(f'Re($\\hat{{v}}_{mode}$)')
-    axes[2].set_ylabel(f'Re($\\hat{{T}}_{mode}$)')
+    axes[2].set_title(f'Joint PDF of {var_names[0]} and {var_names[1]}')
+    axes[2].set_xlabel(f'{var_names[0]}')
+    axes[2].set_ylabel(f'{var_names[1]}')
     # fig.colorbar(im, ax=axes[2])
 
     # # --- 3. Joint PDF heatmap via histogram ---
@@ -453,6 +549,44 @@ def plot_grad_norms(grad_norm_log):
     plt.grid(True, which='both', linestyle='--', alpha=0.6)
     plt.tight_layout()
 
+def plot_l63_regimes(dt, sel0, sel1, interv, S,
+                     prior_weights1, prior_weights2,
+                     xlim, warmup=20):
+    time = np.arange(sel0 * dt, sel1 * dt, interv * dt)
+    fig, axes = plt.subplots(1, 1, figsize=(10, 2.3), sharex=True, gridspec_kw={'height_ratios': [1]})
+    lines, labels = [], []
+
+    # Regime plot
+    ax = axes
+    l1, = ax.plot(time, S[sel0:sel1:interv], 'k', linewidth=1.5, label='True Regime')
+    l2, = ax.plot(time, prior_weights1[sel0:sel1:interv], 'b--', linewidth=1.5)
+    l3, = ax.plot(time, prior_weights2[sel0:sel1:interv], 'r--', linewidth=1.5)
+    
+    # Legend setup
+    lines.extend([l1, l2, l3])
+    labels.extend([
+        'True Regime',
+        'Membership w/o feature selection',
+        'Membership w/ feature selection'
+    ])
+
+    ax.set_ylim([-0.1, 1.1])
+    ax.set_xlabel('$t$')
+    ax.set_title('FCM clustering with / without entropy-regularized feature selection', fontsize=12)
+    ax.tick_params(labelsize=10)
+    ax.set_xlim(xlim)
+
+    # Global legend
+    fig.legend(
+        handles=lines,
+        labels=labels,
+        loc='upper center',
+        bbox_to_anchor=(0.51, 0.12),
+        ncol=3,
+        fontsize=10,
+    )
+    fig.tight_layout(rect=[0, 0.03, 1, 0.96])  # leave enough bottom margin
+
 
 ###################################################### DA #######################################################    
 def plot_l63_series(dt, sel0, sel1, interv,
@@ -499,7 +633,7 @@ def plot_l63_series(dt, sel0, sel1, interv,
         truth_i = truth_vars[i][warmup:]
         mean_i = mean[warmup:, i]
         corr = np.corrcoef(truth_i, mean_i)[0, 1]
-        rmse = np.mean(np.sqrt((truth_i - mean_i) ** 2)) # time mean rmse
+        rmse = np.sqrt(np.mean((truth_i - mean_i) ** 2)) # time mean rmse
         textstr = f'Corr = {corr:.3f}\nRMSE = {rmse:.3f}'
         ax.text(0.99, 0.94, textstr,
                 transform=ax.transAxes,
@@ -538,9 +672,8 @@ def plot_ou_series(dt, sel0, sel1, interv,
                     ur_truth, ui_truth, v_truth, 
                     mean=None, spread=None,
                     prior_weights=None, posterior_weights=None,
-                    xlim=None, warmup=20, prior_mean=None, prior_spread=None, obs=None, S=None):
+                    xlim=None, warmup=20, prior_mean=None, prior_spread=None, obs=None, S=None, var_names=['uR', 'uI', 'v']):
     time = np.arange(sel0 * dt, sel1 * dt, interv * dt)
-    var_names = ['uR', 'uI', 'v']
     truth_vars = [ur_truth, ui_truth, v_truth]
     std = np.sqrt(spread)
 
@@ -579,7 +712,7 @@ def plot_ou_series(dt, sel0, sel1, interv,
             truth_i = truth_vars[i][warmup:]
             mean_i = mean[warmup:, i]
             corr = np.corrcoef(truth_i, mean_i)[0, 1]
-            rmse = np.mean(np.sqrt((truth_i - mean_i) ** 2)) # time mean rmse
+            rmse = np.sqrt(np.mean((truth_i - mean_i) ** 2)) # time mean rmse
             textstr = f'Corr = {corr:.3f}\nRMSE = {rmse:.3f}'
             ax.text(0.99, 0.94, textstr,
                     transform=ax.transAxes,
@@ -621,6 +754,358 @@ def plot_ou_series(dt, sel0, sel1, interv,
 
     # fig.tight_layout()  # Leave space for the global legend    
     fig.tight_layout(rect=[0, 0.03, 1, 0.95])  # leave enough bottom margin
+
+def plot_ou_series_comparison(dt, sel0, sel1, interv, truth_vars, 
+                    mean=None, spread=None,
+                    prior_weights=None, posterior_weights=None,
+                    xlim=None, warmup=20, prior_mean=None, prior_spread=None, obs=None, S=None, 
+                    var_names = ['Single-model EnKF', 'Standard Multi-model EnKF', 'Stochastic Parameterization EnKF', 'Gaussian Mixture Multi-model EnKF', 'Stochastic Parameterization EnKF: $v$', 'Gaussian Mixture Multi-model EnKF: regime'],
+                    y_labels = ['Re[$u$]', 'Re[$u$]', 'Re[$u$]', 'Re[$u$]', '$v$', 'weight']):
+    time = np.arange(sel0 * dt, sel1 * dt, interv * dt)
+    std = np.sqrt(spread)
+
+    fig, axes = plt.subplots(6, 1, figsize=(10, 12), sharex=True, gridspec_kw={'height_ratios': [1, 1, 1, 1, 1, 1]})
+    lines, labels = [], []
+
+    # Time series plots 
+    for i in range(len(truth_vars)):
+        ax = axes[i]
+        l1, = ax.plot(time, truth_vars[i][sel0:sel1:interv], 'k', linewidth=1.5, label='Truth')
+        l2, = ax.plot(time, mean[sel0:sel1:interv, i], 'r', linewidth=1.5, label='Posterior Mean')
+        l3 = ax.fill_between(time,
+                             mean[sel0:sel1:interv, i] - std[sel0:sel1:interv, i],
+                             mean[sel0:sel1:interv, i] + std[sel0:sel1:interv, i],
+                             color='r', alpha=0.2, label='Spread')
+        ax.set_ylabel(y_labels[i])
+        if prior_mean is not None:
+            prior_std = np.sqrt(prior_spread)
+            ax.plot(time, prior_mean[sel0:sel1:interv, i], 'b', linewidth=1.5, label='Prior Mean')
+            ax.fill_between(time,
+                             prior_mean[sel0:sel1:interv, i] - prior_std[sel0:sel1:interv, i],
+                             prior_mean[sel0:sel1:interv, i] + prior_std[sel0:sel1:interv, i],
+                             color='b', alpha=0.2, label='Prior Spread')
+        if obs is not None:
+            ax.plot(time, obs[sel0:sel1:interv, i], 'g', linewidth=1.5, label='Obs')
+
+        ax.set_title(var_names[i], fontsize=12)
+        ax.tick_params(labelsize=10)
+        ax.set_xlim(xlim)
+
+        if i == 0:
+            lines.extend([l1, l2, l3])
+            labels.extend(['Truth', 'Posterior Mean', 'Posterior Spread'])
+
+        if i < len(truth_vars)-1:
+            # Correlation and RMSE annotation
+            truth_i = truth_vars[i][warmup:]
+            mean_i = mean[warmup:, i]
+            corr = np.corrcoef(truth_i, mean_i)[0, 1]
+            rmse = np.mean(np.sqrt((truth_i - mean_i) ** 2)) # time mean rmse
+            textstr = f'Corr = {corr:.3f}\nRMSE = {rmse:.3f}'
+            ax.text(0.99, 0.94, textstr,
+                    transform=ax.transAxes,
+                    fontsize=9,
+                    fontweight='bold',
+                    verticalalignment='top',
+                    horizontalalignment='right',
+                    bbox=dict(boxstyle='round', facecolor='white', alpha=0.5))
+
+    # Regime plot
+    ax = axes[-1]
+
+    if S is not None:
+        l4, = ax.plot(time, S[sel0:sel1:interv], 'k', linewidth=1.5, label='True Regime')
+        lines.extend([l4])
+        labels.extend(['True Regime'])
+    if prior_weights is not None:
+        l5, = ax.plot(time, prior_weights[sel0:sel1:interv], 'b--', linewidth=1.5, label='Prior Weight')
+        ax.set_ylabel('weight')
+        lines.extend([l5])
+        labels.extend(['Prior Weight'])
+    if posterior_weights is not None:
+        l6, = ax.plot(time, posterior_weights[sel0:sel1:interv], 'r--', linewidth=1.5, label='Posterior Weight')
+        lines.extend([l6])
+        labels.extend(['Posterior Weight'])
+    ax.set_ylim([-0.1, 1.1])
+    ax.set_title(var_names[-1], fontsize=12)
+    ax.tick_params(labelsize=10)
+    ax.set_xlim(xlim)
+
+    # Global legend
+    fig.legend(
+        handles=lines,
+        labels=labels,
+        loc='upper center',
+        bbox_to_anchor=(0.51, 0.04),
+        ncol=6,
+        fontsize=10,
+    )
+
+    # fig.tight_layout()  # Leave space for the global legend    
+    fig.tight_layout(rect=[0, 0.03, 1, 0.95])  # leave enough bottom margin
+
+def plot_topobaro_series(dt, sel0, sel1, interv,
+                    truth_vars, 
+                    mean=None, spread=None,
+                    prior_weights=None, posterior_weights=None,
+                    xlim=None, warmup=20, prior_mean=None, prior_spread=None, obs=None, S=None, var_names=['$U$', '$v_1$', '$T_1$']):
+    time = np.arange(sel0 * dt, sel1 * dt, interv * dt)
+    std = np.sqrt(spread)
+
+    fig, axes = plt.subplots(4, 1, figsize=(10, 8), sharex=True, gridspec_kw={'height_ratios': [1, 1, 1, 1]})
+    lines, labels = [], []
+
+    # Time series plots 
+    for i in range(3):
+        ax = axes[i]
+        l1, = ax.plot(time, truth_vars[i][sel0:sel1:interv], 'k', linewidth=1.5, label='Truth')
+        l2, = ax.plot(time, mean[sel0:sel1:interv, i], 'r', linewidth=1.5, label='Posterior Mean')
+        l3 = ax.fill_between(time,
+                             mean[sel0:sel1:interv, i] - std[sel0:sel1:interv, i],
+                             mean[sel0:sel1:interv, i] + std[sel0:sel1:interv, i],
+                             color='r', alpha=0.2, label='Spread')
+        if prior_mean is not None:
+            prior_std = np.sqrt(prior_spread)
+            ax.plot(time, prior_mean[sel0:sel1:interv, i], 'b', linewidth=1.5, label='Prior Mean')
+            ax.fill_between(time,
+                             prior_mean[sel0:sel1:interv, i] - prior_std[sel0:sel1:interv, i],
+                             prior_mean[sel0:sel1:interv, i] + prior_std[sel0:sel1:interv, i],
+                             color='b', alpha=0.2, label='Prior Spread')
+        if obs is not None:
+            ax.plot(time, obs[sel0:sel1:interv, i], 'g', linewidth=1.5, label='Obs')
+
+        ax.set_title(var_names[i], fontsize=12)
+        ax.tick_params(labelsize=10)
+        ax.set_xlim(xlim)
+
+        if i == 0:
+            lines.extend([l1, l2, l3])
+            labels.extend(['Truth', 'Posterior Mean', 'Posterior Spread'])
+
+        # if i < 2:
+        # Correlation and RMSE annotation
+        truth_i = truth_vars[i][warmup:]
+        mean_i = mean[warmup:, i]
+        corr = np.corrcoef(truth_i, mean_i)[0, 1]
+        rmse = np.sqrt(np.mean((truth_i - mean_i) ** 2)) # time mean rmse
+        textstr = f'Corr = {corr:.3f}\nRMSE = {rmse:.3f}'
+        ax.text(0.99, 0.94, textstr,
+                transform=ax.transAxes,
+                fontsize=9,
+                fontweight='bold',
+                verticalalignment='top',
+                horizontalalignment='right',
+                bbox=dict(boxstyle='round', facecolor='white', alpha=0.5))
+
+    # Regime plot
+    ax = axes[3]
+
+    if S is not None:
+        l4, = ax.plot(time, S[sel0:sel1:interv], 'k', linewidth=1.5, label='True Regime')
+        lines.extend([l4])
+        labels.extend(['True Regime'])
+    if prior_weights is not None:
+        l5, = ax.plot(time, prior_weights[sel0:sel1:interv], 'b--', linewidth=1.5, label='Prior Weight')
+        lines.extend([l5])
+        labels.extend(['Prior Weight'])
+    if posterior_weights is not None:
+        l6, = ax.plot(time, posterior_weights[sel0:sel1:interv], 'r--', linewidth=1.5, label='Posterior Weight')
+        lines.extend([l6])
+        labels.extend(['Posterior Weight'])
+    ax.set_ylim([-0.1, 1.1])
+    ax.set_title('Regime', fontsize=12)
+    ax.tick_params(labelsize=10)
+    ax.set_xlim(xlim)
+
+    # Global legend
+    fig.legend(
+        handles=lines,
+        labels=labels,
+        loc='upper center',
+        bbox_to_anchor=(0.51, 0.04),
+        ncol=6,
+        fontsize=10,
+    )
+
+    # fig.tight_layout()  # Leave space for the global legend    
+    fig.tight_layout(rect=[0, 0.03, 1, 0.95])  # leave enough bottom margin
+
+def plot_topobaro_series_comparison(dt, sel0, sel1, interv,
+                    truth_vars, means=None, 
+                    prior_weights=None, posterior_weights=None,
+                    xlim=None, warmup=40, S=None, var_names=['$U$', '$v_1$', '$T_1$'],
+                    mean_labels=None, colors=['r', 'b', 'g', 'orange', 'purple', 'brown'], line_width=1.5, title=None):
+
+    time = np.arange(sel0 * dt, sel1 * dt, interv * dt)
+    fig, axes = plt.subplots(4, 1, figsize=(10, 8), sharex=True, gridspec_kw={'height_ratios': [1, 1, 1, 1]})
+    lines, labels = [], []
+    if title is  not None:
+        axes[0].set_title(title, fontsize=14)
+    
+    # Time series plots 
+    for i in range(3):
+        ax = axes[i]
+        l_truth, = ax.plot(time, truth_vars[i][sel0:sel1:interv], 'k', linewidth=line_width)
+        ax.set_ylabel(var_names[i], fontsize=12)
+        ax.tick_params(labelsize=10)
+        ax.set_xlim(xlim)
+        if i == 0:
+            lines.append(l_truth)
+            labels.append('Truth')
+
+        for mean, label, color in zip(means, mean_labels, colors):
+            l_mean, = ax.plot(time, mean[sel0:sel1:interv, i], color=color, linewidth=line_width)
+            if i == 0:
+                lines.append(l_mean)
+                labels.append(label)
+        
+        # Prepare correlation and RMSE in a transposed layout
+        corrs, rmses = [], []
+        for mean in means:
+            truth_i = truth_vars[i][warmup:]
+            mean_i = mean[warmup:, i]
+            corr = np.corrcoef(truth_i, mean_i)[0, 1]
+            rmse = np.sqrt(np.mean((truth_i - mean_i) ** 2))
+            corrs.append(f'{corr:.3f}')
+            rmses.append(f'{rmse:.3f}')
+
+        # Build two rows: one for correlation, one for RMSE
+        corr_row = r"Corr:  " + "   ".join([f"{c}" for c in corrs])
+        rmse_row = r"RMSE: " + "   ".join([f"{r}" for r in rmses])
+        metrics_box_text = f"{corr_row}\n{rmse_row}"
+
+        # Draw a transparent dummy text to get the box
+        ax.text(
+            0.99, 0.94,
+            metrics_box_text,
+            transform=ax.transAxes,
+            fontsize=9,
+            fontweight='bold',
+            verticalalignment='top',
+            horizontalalignment='right',
+            color=(0, 0, 0, 0),  # fully transparent text
+            # color='black',  # fully transparent text
+            bbox=dict(boxstyle='round', facecolor='white', alpha=0.7)
+        )
+
+        # Overlay visible text in each cell
+        line_spacing_x = 0.058
+        line_spacing_y = 0.1
+        ax.text(
+            0.82, 0.94,  # adjust x-spacing
+            'Corr:',
+            transform=ax.transAxes,
+            fontsize=9,
+            fontweight='bold',
+            verticalalignment='top',
+            horizontalalignment='right',
+            color='black'
+        )
+        ax.text(
+            0.83, 0.94 - line_spacing_y,
+            'RMSE:',
+            transform=ax.transAxes,
+            fontsize=9,
+            fontweight='bold',
+            verticalalignment='top',
+            horizontalalignment='right',
+            color='black'
+        )
+        for j, color in enumerate(colors[:len(means)]):
+            ax.text(
+                1.05 - (len(means)-j) * line_spacing_x, 0.94,  # adjust x-spacing
+                corrs[j],
+                transform=ax.transAxes,
+                fontsize=9,
+                fontweight='bold',
+                verticalalignment='top',
+                horizontalalignment='right',
+                color=color
+            )
+            ax.text(
+                1.05 - (len(means)-j) * line_spacing_x, 0.94 - line_spacing_y,
+                rmses[j],
+                transform=ax.transAxes,
+                fontsize=9,
+                fontweight='bold',
+                verticalalignment='top',
+                horizontalalignment='right',
+                color=color
+            )
+
+    # Regime plot
+    ax = axes[3]
+    if S is not None:
+        l4, = ax.plot(time, S[sel0:sel1:interv], 'k', linewidth=line_width)
+        lines.append(l4)
+        labels.append('True Regime')
+    if prior_weights is not None:
+        l5, = ax.plot(time, prior_weights[sel0:sel1:interv], 'b--', linewidth=line_width)
+        lines.append(l5)
+        labels.append('Prior Weight')
+    if posterior_weights is not None:
+        l6, = ax.plot(time, posterior_weights[sel0:sel1:interv], 'r--', linewidth=line_width)
+        lines.append(l6)
+        labels.append('Posterior Weight')
+
+    ax.set_ylim([-0.1, 1.1])
+    ax.set_ylabel('weight', fontsize=12)
+    ax.set_xlabel('t', fontsize=12)
+    ax.tick_params(labelsize=10)
+    ax.set_xlim(xlim)
+
+    # Global legend
+    fig.legend(
+        handles=lines,
+        labels=labels,
+        loc='upper center',
+        bbox_to_anchor=(0.51, 0.04),
+        ncol=6,
+        fontsize=10,
+    )
+    
+    fig.tight_layout(rect=[0, 0.03, 1, 0.97])
+
+def plot_topobaro_fields_comparison(dt, sel0, sel1, v_fields, T_fields, method_labels, vlim=10):
+    """
+    Plot v(x, t) and T(x, t) fields for multiple methods.
+    """
+    n_methods = len(method_labels)
+    time_extent = [sel0 * dt, sel1 * dt]
+    x_extent = [0, 2 * np.pi]
+    fig, axes = plt.subplots(n_methods, 2, figsize=(10, 1.2 * n_methods), sharex=True, sharey=True)
+    fig.subplots_adjust(wspace=0.1, hspace=0.2)
+
+    for i in range(n_methods):
+        ax_v = axes[i, 0]
+        im_v = ax_v.imshow(v_fields[i][sel0:sel1].T,
+                           origin='lower',
+                           aspect='auto',
+                           extent=time_extent + x_extent,
+                           vmin=-vlim, vmax=vlim,
+                           cmap='seismic')
+        ax_v.set_ylabel(r"$x$", fontsize=10)
+
+        ax_T = axes[i, 1]
+        im_T = ax_T.imshow(T_fields[i][sel0:sel1].T,
+                           origin='lower',
+                           aspect='auto',
+                           extent=time_extent + x_extent,
+                           vmin=-vlim, vmax=vlim,
+                           cmap='seismic')
+        if i == n_methods - 1:
+            ax_v.set_xlabel(r"$t$")
+            ax_T.set_xlabel(r"$t$")
+        ax_T.text(0.99, 0.95, method_labels[i],
+          transform=ax_T.transAxes,
+          fontsize=10,
+          va='top',
+          ha='right',
+          bbox=dict(facecolor='white', alpha=0.1, edgecolor='none'))
+    axes[0, 0].set_title(r"$v(x,t)$", fontsize=11)
+    axes[0, 1].set_title(r"$T(x,t)$", fontsize=11)
+    plt.tight_layout(rect=[0, 0.01, 1, 1])
+    cbar = fig.colorbar(im_T, ax=axes, location='bottom', pad=0.1, fraction=0.015, aspect=40)
 
 def plot_gmm_pdf_3vars(means_list, stds_list, weights_list, x_ranges=None, num_points=1000, var_names=['X', 'Y', 'Z']):
     """
