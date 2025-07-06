@@ -2,26 +2,13 @@ import numpy as np
 from enkf import eakf, construct_GC
 from L63_noisy import L63RegimeModel
 from sklearn.preprocessing import StandardScaler
-from cluster import FCMEntropy
+from cluster import FCMEntropy, reorder_clusters_by_centers
 from model_evaluation import evaluate_model
 from scipy.linalg import expm
-from scipy.optimize import minimize, linear_sum_assignment
+from scipy.optimize import minimize
 from collections import deque
 import pickle
 from time import time
-
-def reorder_clusters_by_centers(learned_centers, reference_centers):
-    """
-    Reorders learned cluster centers to best match the reference centers.
-    Returns perm (list) such that learned_centers[perm] aligns with reference_centers
-    """
-    K = reference_centers.shape[0]
-    cost_matrix = np.zeros((K, K))
-    for i in range(K):
-        for j in range(K):
-            cost_matrix[i, j] = np.linalg.norm(reference_centers[i] - learned_centers[j])
-    row_ind, col_ind = linear_sum_assignment(cost_matrix)
-    return col_ind 
     
 def allocate_ensemble(ensemble_size, weights):
     '''input total ensemble size and model weights, return ensemble size for each model'''
