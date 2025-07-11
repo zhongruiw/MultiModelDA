@@ -332,6 +332,10 @@ for iinf in range(ninf):
                     analy_spread_model[iassim, :, m] = np.std(ens_m, axis=0, ddof=1)
                     analy_cov_model.append(np.cov(ens_m.T, ddof=1))
 
+            # prevent weight degenerating
+            if np.sum(weights) < 1e-10: # if all models give bad predictions
+                weights = np.array([1/n_models] * n_models, dtype=float) # uniform initial weights
+
             # normalize to get posterior weights
             weights = weights / np.sum(weights)
             posterior_weights[iassim] = weights

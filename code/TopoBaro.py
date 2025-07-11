@@ -195,7 +195,7 @@ class PiecewiseSeriesDataset(Dataset):
 class LSTMTrainer:
     def __init__(self, data_path=None, piecewise=False, data_segments=None, seq_len=10, pred_len=1,
                  hidden_dim=64, batch_size=200, num_epochs=20,
-                 model_dir="../model", seed=0, device=None):
+                 model_dir="../model", seed=0, device=None, train_portion=0.8):
         self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
         torch.manual_seed(seed)
         np.random.seed(seed)
@@ -206,16 +206,16 @@ class LSTMTrainer:
         self.batch_size = batch_size
         self.num_epochs = num_epochs
         self.model_dir = model_dir
-        self._load_data(data_path, piecewise, data_segments)
+        self._load_data(data_path, piecewise, data_segments, train_portion)
         self.model = LSTMModel(self.input_dim, hidden_dim, self.input_dim).to(self.device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
         self.loss_fn = nn.MSELoss()
         self.train_losses = []
 
-    def _load_data(self, path=None, piecewise=False, data_segments=None):
+    def _load_data(self, path=None, piecewise=False, data_segments=None, train_portion=0.8):
         if piecewise:
             total_size = len(data_segments)
-            train_size = int(0.8 * total_size)
+            train_size = int(train_portion * total_size)
             test_size = total_size - train_size
             print(f'train size: {train_size}, test size: {test_size}')
             self.train_dataset = PiecewiseSeriesDataset(data_segments[:train_size], self.seq_len, self.pred_len)
@@ -229,7 +229,7 @@ class LSTMTrainer:
             data_all = np.concatenate([U_truth[:, None], v_truth, T_truth], axis=1).astype(np.float32)
             dataset = BarotropicDataset(data_all, self.seq_len, self.pred_len)
             total_size = len(dataset)
-            train_size = int(0.8 * total_size)
+            train_size = int(train_portion * total_size)
             test_size = total_size - train_size
             print(f'train size: {train_size}, test size: {test_size}')
             self.train_dataset = torch.utils.data.Subset(dataset, range(train_size))
