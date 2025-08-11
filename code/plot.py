@@ -931,7 +931,7 @@ def plot_topobaro_series(dt, sel0, sel1, interv,
     fig.tight_layout(rect=[0, 0.03, 1, 0.95])  # leave enough bottom margin
 
 def plot_topobaro_series_comparison(dt, sel0, sel1, interv,
-                    truth_vars, means=None, 
+                    truth_vars, means=None, spreads=None,
                     prior_weights=None, posterior_weights=None,
                     xlim=None, warmup=40, S=None, var_names=['$U$', '$v_1$', '$T_1$'],
                     mean_labels=None, colors=['r', 'b', 'g', 'orange', 'purple', 'brown'], line_width=1.5, title=None):
@@ -958,6 +958,12 @@ def plot_topobaro_series_comparison(dt, sel0, sel1, interv,
             if i == 0:
                 lines.append(l_mean)
                 labels.append(label)
+        if spreads is not None:
+            for std, mean, color in zip(spreads, means, colors):
+                l_spread = ax.fill_between(time,
+                             mean[sel0:sel1:interv, i] - std[sel0:sel1:interv, i],
+                             mean[sel0:sel1:interv, i] + std[sel0:sel1:interv, i],
+                             color=color, alpha=0.2)
         
         # Prepare correlation and RMSE in a transposed layout
         corrs, rmses = [], []
@@ -1149,6 +1155,83 @@ def plot_gmm_pdf_3vars(means_list, stds_list, weights_list, x_ranges=None, num_p
     axes[0].set_ylabel("Density")
     plt.tight_layout()
 
+def plot_gmm_pdf_3vars_multi(
+    means_array, stds_array, weights_array,
+    x_ranges=None, num_points=1000, var_names=['X', 'Y', 'Z'],
+    labels=None, colors=None, title=None, truth_array=None
+):
+    """
+    Plot PDFs of 1D Gaussian mixtures for three variables, each with multiple GMMs.
+
+    Parameters:
+    - means_array: (K, 3, N) array of means
+    - stds_array: (K, 3, N) array of stds
+    - weights_array: (K, 3, N) array of weights
+    - x_ranges: optional list of 3 (xmin, xmax) tuples
+    - num_points: number of x-points per PDF
+    - var_names: list of variable names for labeling
+    - labels: list of K strings for legend labels
+    - colors: list of K colors for different GMM curves
+    - truth_array: 
+    """
+    from scipy.stats import norm
+
+    K = means_array.shape[0]  # number of GMMs
+    fig, axes = plt.subplots(1, 3, figsize=(10, 3), sharex=False)
+    legend_lines = []
+    if labels is None:
+        labels = [f"GMM {i}" for i in range(K)]
+    if colors is None:
+        colors = ['k', 'r', 'b'][:K]
+
+    for i in range(3):  # for each variable
+        ax = axes[i]
+        for k in range(K):  # for each GMM
+            means = means_array[k, i]
+            stds = stds_array[k, i]
+            weights = weights_array[k, i]
+
+            # Trim unused components if weights are padded with zeros
+            mask = weights > 0
+            means = means[mask]
+            stds = stds[mask]
+            weights = weights[mask]
+
+            if x_ranges is None or x_ranges[i] is None:
+                xmin = np.min(means - 4 * stds)
+                xmax = np.max(means + 4 * stds)
+            else:
+                xmin, xmax = x_ranges[i]
+
+            x = np.linspace(xmin, xmax, num_points)
+            pdf = np.zeros_like(x)
+            for mu, sigma, w in zip(means, stds, weights):
+                pdf += w * norm.pdf(x, loc=mu, scale=sigma)
+
+            line, = ax.plot(x, pdf, color=colors[k], label=labels[k], linewidth=2)
+            for mu in means:
+                ax.axvline(mu, linestyle='--', color=colors[k], alpha=0.3)
+            if i == 0:  # only collect once
+                legend_lines.append(line)
+                        
+        line = ax.axvline(truth_array[i], linestyle='--', color=colors[K], alpha=0.8)
+        if i==0:
+            legend_lines.append(line)
+        ax.set_xlabel(f"{var_names[i]}")
+
+    axes[0].set_ylabel("Density")
+    fig.suptitle(title, fontsize=14)
+    fig.legend(
+        handles=legend_lines,
+        labels=labels,
+        loc='upper center',
+        bbox_to_anchor=(0.5, 0.12),  # adjust for layout
+        ncol=K+1,
+        fontsize=10
+    )
+
+    plt.tight_layout(rect=[0, 0.06, 1, 1])  # leave space for legend
+    
 
 ######################################### Model Evaluation ###########################################    
 def plot_all_histograms_univar(hist_data, variables=['x', 'y', 'z'], figsize=(12, 4)):
@@ -1238,5 +1321,205 @@ def plot_3d_histogram(p, edges, title='3D Histogram', threshold=0.001):
     ax.set_ylabel('y')
     ax.set_zlabel('z')
     plt.tight_layout()
+
+######################################### Schematic ###########################################    
+def plot_vertical_gaussian_mixture(components= [
+                                    (0.1, -.6, 0.4),
+                                    (0.3, 1.2,1.2),
+                                    (0.6, 1.6, 0.5)], x_range=(-5, 5), resolution=1000,
+                                    highlight_idx=None, figsize=(2, 2), color='r'):
+    """
+    Plot a vertical Gaussian mixture model (PDF on x-axis, values on y-axis).
+
+    Args:
+        components: List of (weight, mean, std) tuples.
+        x_range: Tuple (xmin, xmax) for the range of x values.
+        resolution: Number of x points to sample.
+        highlight_idx: Index of a specific component to plot instead of the full mixture.
+        figsize: Size of the plot.
+        color: Color for the mixture or component curve.
+    """
+    x = np.linspace(*x_range, resolution)
+    y_components = []
+    y_mixture = np.zeros_like(x)
+
+    for weight, mu, sigma in components:
+        y = weight * norm.pdf(x, mu, sigma)
+        y_components.append(y)
+        y_mixture += y
+
+    plt.figure(figsize=figsize)
+
+    if highlight_idx is not None:
+        plt.plot(y_components[highlight_idx], x, color, linewidth=4.5,
+                 label=f'Component {highlight_idx}')
+    else:
+        plt.plot(y_mixture, x, color, linewidth=4.5, label='Gaussian Mixture')
+
+    plt.ylim(*x_range)
+    plt.xticks([])
+    plt.yticks([])
+    plt.tight_layout()
+
+######################################### ENSO ########################################### 
+def plot_eofs(eofs, evr, modes=(1,2,3), vmin=None, vmax=None):
+    modes = list(modes)
+    fig, axs = plt.subplots(len(modes), 1, figsize=(6, 2*len(modes)), constrained_layout=True)
+    if len(modes) == 1: axs = [axs]
+    for ax, m in zip(axs, modes):
+        patt = eofs.sel(mode=m)
+        patt = patt.sortby("lat")
+        im = patt.plot.imshow(
+            ax=ax, cmap="RdBu_r", vmin=vmin, vmax=vmax,
+            add_colorbar=False
+        )
+        ax.set_title("")
+        ax.text(
+            0.02, 0.02, f"EOF {m} ({evr.sel(mode=m).item()*100:.1f}% var)",
+            transform=ax.transAxes, fontsize=10,
+            color="black", ha="left", va="bottom",
+            bbox=dict(facecolor="white", alpha=0.5, edgecolor="none", pad=2)
+        )
+        if ax != axs[-1]:
+            ax.set_xlabel("")
+        else: 
+            ax.set_xlabel("Longitude")
+        ax.set_ylabel("Latitude")
+
+    cbar = fig.colorbar(im, ax=axs, orientation="vertical", aspect=50, shrink=0.8, fraction=0.1, pad=0.02)
+    fig.suptitle("EOFs", fontsize=12)
+
+def plot_pcs(pcs, modes=(1,2,3)):
+    fig, ax = plt.subplots(figsize=(8, 2.5))
+    for m in modes:
+        ax.plot(pcs["time"].values, pcs.sel(mode=m), label=f"PC{m}")
+    ax.legend()
+    ax.grid(True, alpha=0.35)
+    ax.set_xlabel("Time")
+    ax.set_ylabel("PC (arb. units)")
+    plt.tight_layout()
+    plt.show()
+
+def plot_nino34_with_regimes(
+    nino34,                   # np.ndarray, shape (Nt,)
+    labels,                   # np.ndarray or list, shape (Nt,), ints like 0..K-1 (or -1 for noise)
+    time=None,                # None, np.ndarray shape (Nt,), or pandas.DatetimeIndex
+    regime_names=None,        # list of names per regime id; len==K
+    colors=None,              # list of color strings per regime id; len==K
+    rolling=None,             # e.g., 3 or 5 for moving avg window (optional)
+    title="Niño 3.4 with clustered regimes"
+):
+    from matplotlib.lines import Line2D
+    from matplotlib.colors import ListedColormap
+    nino34 = np.asarray(nino34)
+    labels = np.asarray(labels)
+    assert nino34.shape == labels.shape, "nino34 and labels must have same shape"
+    Nt = nino34.size
+    if time is None:
+        x = np.arange(Nt)
+        xlabel = "Time index"
+    else:
+        x = np.asarray(time)
+        xlabel = "Time"
+        
+    # Handle NaNs: mask both arrays consistently
+    good = np.isfinite(nino34) & np.isfinite(labels)
+    x_plot = x[good]
+    y_plot = nino34[good]
+    lab_plot = labels[good].astype(int)
+
+    # Unique regimes (keep order by sorted)
+    uniq = np.unique(lab_plot)
+
+    # Build colors
+    assert len(colors) >= len(uniq), "Provide enough colors for all regimes"
+    palette = colors[:len(uniq)]
+
+    # Map regime id -> color (keep label ids)
+    color_map = {lab: palette[i] for i, lab in enumerate(uniq)}
+
+    # Build names
+    name_map = {lab: (regime_names[lab] if lab >= 0 else "Noise") for lab in uniq} # If regime ids start at 0..K-1, map directly; for -1 keep "Noise"
+
+    fig, ax = plt.subplots(figsize=(10, 3.5))
+    ax.plot(x, nino34, 'k', lw=0.9, alpha=0.6)
+    for lab in uniq:
+        sel = lab_plot == lab
+        ax.scatter(x_plot[sel], y_plot[sel], s=14, color=color_map[lab], label=name_map[lab], zorder=3)
+    ax.set_ylabel("SST anomaly (°C)")
+    ax.set_xlabel(xlabel)
+    ax.set_title(title)
+    ax.grid(True, alpha=0.3)
+
+    # Deduplicate legend entries (Niño line, rolling mean, regimes)
+    handles, labels_ = ax.get_legend_handles_labels()
+    seen = {}
+    new_h, new_l = [], []
+    for h, l in zip(handles, labels_):
+        if l not in seen:
+            seen[l] = True
+            new_h.append(h); new_l.append(l)
+    ax.legend(new_h, new_l, ncol=2, fontsize=9)
+    # Legend outside bottom
+    ax.legend(
+        new_h, new_l,
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.18),
+        ncol=len(new_l),
+        fontsize=9
+    )
+
+    plt.tight_layout()
+    return fig, ax
+
+def plot_five_regime_means(mean_maps: xr.DataArray, freq: xr.DataArray, regimes=None, cmap="RdBu_r"):
+    """
+    Plot five regime-mean anomaly maps with a shared symmetric color scale.
+    If 'regimes' is None, the first five regimes in mean_maps.regime are used.
+    """
+    if regimes is None:
+        regimes = mean_maps.regime.values[:5]
+    sel = mean_maps.sel(regime=regimes)
+
+    vmax = float(np.nanmax(np.abs(sel.values)))
+    vmin = -vmax
+
+    fig, axs = plt.subplots(
+        len(regimes), 1, figsize=(6, 1.5*len(regimes)),
+        sharex=True, constrained_layout=True
+    )
+
+    if len(regimes) == 1:
+        axs = [axs]
+        
+    frq_map = {int(r): float(freq.sel(regime=r).item()) for r in freq.regime.values}
+
+    for ax, reg in zip(axs, regimes):
+        patt = sel.sel(regime=reg)
+        im = patt.plot.imshow(
+            ax=ax,
+            cmap=cmap,
+            vmin=vmin,
+            vmax=vmax,
+            add_colorbar=False
+        )
+        ax.set_ylabel("Latitude")
+        if ax != axs[-1]:
+            ax.set_xlabel("")
+        else: 
+            ax.set_xlabel("Longitude")
+        ax.set_title("")  # remove any auto-generated title
+        r = int(reg)
+        frq = frq_map.get(r, 0.0) * 100.0
+        ax.text(
+            0.02, 0.02, f"Regime {reg} ({frq:.1f}%)",
+            transform=ax.transAxes, fontsize=10,
+            color="black", ha="left", va="bottom",
+            bbox=dict(facecolor="white", alpha=0.5, edgecolor="none", pad=2)
+        )
+
+    cbar = fig.colorbar(im, ax=axs, orientation="vertical", aspect=50, shrink=0.8, fraction=0.1, pad=0.02)
+    fig.suptitle("Mean SSTA by regime", fontsize=12)
+
 
 
