@@ -1472,13 +1472,14 @@ def plot_nino34_with_regimes(
     plt.tight_layout()
     return fig, ax
 
-def plot_five_regime_means(mean_maps: xr.DataArray, freq: xr.DataArray, regimes=None, cmap="RdBu_r"):
+def plot_regime_means(mean_maps: xr.DataArray, freq: xr.DataArray, regimes=None, cmap="RdBu_r"):
     """
-    Plot five regime-mean anomaly maps with a shared symmetric color scale.
+    Plot regime-mean anomaly maps with a shared symmetric color scale.
     If 'regimes' is None, the first five regimes in mean_maps.regime are used.
     """
+    import xarray as xr
     if regimes is None:
-        regimes = mean_maps.regime.values[:5]
+        regimes = mean_maps.regime.values
     sel = mean_maps.sel(regime=regimes)
 
     vmax = float(np.nanmax(np.abs(sel.values)))
@@ -1520,6 +1521,5 @@ def plot_five_regime_means(mean_maps: xr.DataArray, freq: xr.DataArray, regimes=
 
     cbar = fig.colorbar(im, ax=axs, orientation="vertical", aspect=50, shrink=0.8, fraction=0.1, pad=0.02)
     fig.suptitle("Mean SSTA by regime", fontsize=12)
-
 
 

@@ -194,6 +194,8 @@ class FCMEntropy:
             return jnp.argmax(fuzzypartmat, axis=1)
         return fuzzypartmat
 
+
+################################### Utils ####################################
 def reorder_clusters_by_centers(learned_centers, reference_centers):
     """
     Reorders learned cluster centers to best match the reference centers.
@@ -258,3 +260,24 @@ def denoise_and_extract_slices(S_obs, data, min_duration=3):
 def zero_crossing_rate(signal):
     '''signal of shape (B, N)'''
     return ((signal[:, :-1] * signal[:, 1:]) < 0).sum(axis=1) / signal.shape[1]
+
+def reorder_labels_by_mean_nino34(nino34, labels):
+    """
+    Reorder integer labels so that the highest-mean Niño 3.4
+    regime is label 0, next highest is label 1, etc.
+    """
+    labels = np.asarray(labels)
+    nino34 = np.asarray(nino34)
+
+    unique_labels = np.unique(labels)
+    means = {lab: np.nanmean(nino34[labels == lab]) for lab in unique_labels}
+
+    # Sort regime IDs by descending mean Niño 3.4
+    sorted_labs = sorted(unique_labels, key=lambda x: means[x], reverse=True)
+
+    # Map old label -> new label (0, 1, 2, ...)
+    remap = {old: new for new, old in enumerate(sorted_labs)}
+    new_labels = np.array([remap[lab] for lab in labels])
+
+    return new_labels, remap, means
+    
