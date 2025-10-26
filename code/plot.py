@@ -1398,7 +1398,6 @@ def plot_pcs(pcs, modes=(1,2,3)):
     ax.set_xlabel("Time")
     ax.set_ylabel("PC (arb. units)")
     plt.tight_layout()
-    plt.show()
 
 def plot_nino34_with_regimes(
     nino34,                   # np.ndarray, shape (Nt,)
@@ -1472,7 +1471,7 @@ def plot_nino34_with_regimes(
     plt.tight_layout()
     return fig, ax
 
-def plot_regime_means(mean_maps: xr.DataArray, freq: xr.DataArray, regimes=None, cmap="RdBu_r"):
+def plot_regime_means(mean_maps, freq, regimes=None, cmap="RdBu_r"):
     """
     Plot regime-mean anomaly maps with a shared symmetric color scale.
     If 'regimes' is None, the first five regimes in mean_maps.regime are used.
@@ -1522,4 +1521,58 @@ def plot_regime_means(mean_maps: xr.DataArray, freq: xr.DataArray, regimes=None,
     cbar = fig.colorbar(im, ax=axs, orientation="vertical", aspect=50, shrink=0.8, fraction=0.1, pad=0.02)
     fig.suptitle("Mean SSTA by regime", fontsize=12)
 
-
+def hovmoller_compare(truth, pred, time, lon, var_names=['ssta', 'ssha', 'taux', 'tauy', 'nhf']):
+    import matplotlib.dates as mdates
+    T, V, Nx = truth.shape    
+    def symmetric_vlims(a, b, pct=98):
+        """
+        Symmetric vmin/vmax from combined data (robust to outliers via percentile).
+        a, b: arrays (T, Nx) for one variable (truth, pred)
+        """
+        both = np.concatenate([a.ravel(), b.ravel()])
+        # Guard against all-NaN slices
+        if np.all(np.isnan(both)):
+            return (-1.0, 1.0)  # fallback
+        m = np.nanpercentile(np.abs(both), pct)
+        if not np.isfinite(m) or m == 0:
+            m = np.nanmax(np.abs(both))
+            if not np.isfinite(m) or m == 0:
+                m = 1.0
+        return (-m, m)
+    
+    def hovmoller(ax, Xlon, Ytime, C, vmin, vmax, title=None):
+        pcm = ax.pcolormesh(
+            Xlon, Ytime, C, cmap='RdBu_r', shading='auto',
+            vmin=vmin, vmax=vmax
+        )
+        if title:
+            ax.set_title(title, fontsize=10, pad=6)
+        ax.set_xlim(Xlon.min(), Xlon.max())
+        ax.set_xticks([120, 180, 240, 280])  # adjust if your lon domain differs
+        ax.yaxis.set_major_locator(mdates.YearLocator(1))
+        ax.yaxis.set_major_formatter(mdates.DateFormatter('%Y'))
+        return pcm
+    
+    ncols = 2 * len(var_names)   # truth | pred for each variable
+    fig, axes = plt.subplots(
+        nrows=1, ncols=ncols, figsize=(1.4 * ncols, 8),
+        sharey=True, constrained_layout=True
+    )
+    colorbars = []  # store for optional adjustments later
+    for i, name in enumerate(var_names):
+        c_truth = truth[:, i, :]
+        c_pred  = pred[:,  i, :]
+        vmin, vmax = symmetric_vlims(c_truth, c_pred, pct=98)
+        ax_t = axes[2*i]
+        ax_p = axes[2*i + 1]
+        pcm_t = hovmoller(ax_t, lon, time, c_truth, vmin, vmax, title=f"{name.upper()}(Physics)")
+        pcm_p = hovmoller(ax_p, lon, time, c_pred,  vmin, vmax, title=f"{name.upper()}(NNs)")
+        if i == 0:
+            ax_t.set_ylabel("Year")
+        ax_t.set_xlabel("Longitude (°E)")
+        ax_p.set_xlabel("Longitude (°E)")
+        cb = fig.colorbar(
+            pcm_p, ax=[ax_t, ax_p], orientation='horizontal',
+            fraction=0.046, pad=0.02, aspect=30
+        )
+        colorbars.append(cb)
