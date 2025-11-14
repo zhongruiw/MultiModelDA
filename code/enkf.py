@@ -46,7 +46,7 @@ def construct_GC(cut, mlocs, ylocs):
 
 def construct_GC_2d_general(cut, mlocs, ylocs, Nx=None):
     """
-    Construct the Gaspari and Cohn localization matrix for a 2D field.
+    Construct the Gaspari and Cohn localization matrix for a 2D field (Periodic).
 
     Parameters:
         cut (float): Localization cutoff distance.

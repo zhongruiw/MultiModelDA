@@ -1233,6 +1233,88 @@ def plot_gmm_pdf_3vars_multi(
     plt.tight_layout(rect=[0, 0.06, 1, 1])  # leave space for legend
     
 
+def plot_series(dt, sel0, sel1, interv, truth_vars, mean=None, spread=None, prior_weights=None, posterior_weights=None,
+                xlim=None, warmup=20, prior_mean=None, prior_spread=None, obs=None, S=None, var_names=['$U$', '$v_1$', '$T_1$']):
+    time = np.arange(sel0 * dt, sel1 * dt, interv * dt)
+    std = np.sqrt(spread)
+    nvars = len(truth_vars)
+    
+    fig, axes = plt.subplots(nvars+1, 1, figsize=(10, 2*(nvars+1)), sharex=True, gridspec_kw={'height_ratios': [1]*(nvars+1)})
+    lines, labels = [], []
+
+    # Time series plots 
+    for i in range(nvars):
+        ax = axes[i]
+        l1, = ax.plot(time, truth_vars[i][sel0:sel1:interv], 'k', linewidth=1.5, label='Truth')
+        l2, = ax.plot(time, mean[sel0:sel1:interv, i], 'r', linewidth=1.5, label='Posterior Mean')
+        l3 = ax.fill_between(time,
+                             mean[sel0:sel1:interv, i] - std[sel0:sel1:interv, i],
+                             mean[sel0:sel1:interv, i] + std[sel0:sel1:interv, i],
+                             color='r', alpha=0.2, label='Spread')
+        if prior_mean is not None:
+            prior_std = np.sqrt(prior_spread)
+            ax.plot(time, prior_mean[sel0:sel1:interv, i], 'b', linewidth=1.5, label='Prior Mean')
+            ax.fill_between(time,
+                             prior_mean[sel0:sel1:interv, i] - prior_std[sel0:sel1:interv, i],
+                             prior_mean[sel0:sel1:interv, i] + prior_std[sel0:sel1:interv, i],
+                             color='b', alpha=0.2, label='Prior Spread')
+        if obs is not None:
+            ax.plot(time, obs[sel0:sel1:interv, i], 'g', linewidth=1.5, label='Obs')
+
+        ax.set_title(var_names[i], fontsize=12)
+        ax.tick_params(labelsize=10)
+        ax.set_xlim(xlim)
+
+        if i == 0:
+            lines.extend([l1, l2, l3])
+            labels.extend(['Truth', 'Posterior Mean', 'Posterior Spread'])
+
+        # Correlation and RMSE annotation
+        truth_i = truth_vars[i][warmup:]
+        mean_i = mean[warmup:, i]
+        corr = np.corrcoef(truth_i, mean_i)[0, 1]
+        rmse = np.sqrt(np.mean((truth_i - mean_i) ** 2)) # time mean rmse
+        textstr = f'Corr = {corr:.3f}\nRMSE = {rmse:.3f}'
+        ax.text(0.99, 0.94, textstr,
+                transform=ax.transAxes,
+                fontsize=9,
+                fontweight='bold',
+                verticalalignment='top',
+                horizontalalignment='right',
+                bbox=dict(boxstyle='round', facecolor='white', alpha=0.5))
+
+    # Regime plot
+    ax = axes[nvars]
+
+    if S is not None:
+        l4, = ax.plot(time, S[sel0:sel1:interv], 'k', linewidth=1.5, label='True Regime')
+        lines.extend([l4])
+        labels.extend(['True Regime'])
+    if prior_weights is not None:
+        l5, = ax.plot(time, prior_weights[sel0:sel1:interv], 'b--', linewidth=1.5, label='Prior Weight')
+        lines.extend([l5])
+        labels.extend(['Prior Weight'])
+    if posterior_weights is not None:
+        l6, = ax.plot(time, posterior_weights[sel0:sel1:interv], 'r--', linewidth=1.5, label='Posterior Weight')
+        lines.extend([l6])
+        labels.extend(['Posterior Weight'])
+    ax.set_ylim([-0.1, 1.1])
+    ax.set_title('Regime', fontsize=12)
+    ax.tick_params(labelsize=10)
+    ax.set_xlim(xlim)
+
+    # Global legend
+    fig.legend(
+        handles=lines,
+        labels=labels,
+        loc='upper center',
+        bbox_to_anchor=(0.51, 0.04),
+        ncol=6,
+        fontsize=10,
+    )
+    fig.tight_layout(rect=[0, 0.03, 1, 0.95])  # leave enough bottom margin
+
+
 ######################################### Model Evaluation ###########################################    
 def plot_all_histograms_univar(hist_data, variables=['x', 'y', 'z'], figsize=(12, 4)):
     n_regimes = len(hist_data[variables[0]])
@@ -1521,7 +1603,7 @@ def plot_regime_means(mean_maps, freq, regimes=None, cmap="RdBu_r"):
     cbar = fig.colorbar(im, ax=axs, orientation="vertical", aspect=50, shrink=0.8, fraction=0.1, pad=0.02)
     fig.suptitle("Mean SSTA by regime", fontsize=12)
 
-def hovmoller_compare(truth, pred, time, lon, var_names=['ssta', 'ssha', 'taux', 'tauy', 'nhf']):
+def hovmoller_compare(truth, pred, time, lon, var_names=['ssta', 'ssha', 'taux', 'tauy', 'nhf'], data_names=['Physics', 'NNs'], vlims=None):
     import matplotlib.dates as mdates
     T, V, Nx = truth.shape    
     def symmetric_vlims(a, b, pct=98):
@@ -1555,18 +1637,21 @@ def hovmoller_compare(truth, pred, time, lon, var_names=['ssta', 'ssha', 'taux',
     
     ncols = 2 * len(var_names)   # truth | pred for each variable
     fig, axes = plt.subplots(
-        nrows=1, ncols=ncols, figsize=(1.4 * ncols, 8),
+        nrows=1, ncols=ncols, figsize=(1.58 * ncols, 8),
         sharey=True, constrained_layout=True
     )
     colorbars = []  # store for optional adjustments later
     for i, name in enumerate(var_names):
         c_truth = truth[:, i, :]
         c_pred  = pred[:,  i, :]
-        vmin, vmax = symmetric_vlims(c_truth, c_pred, pct=98)
+        if vlims is None:
+            vmin, vmax = symmetric_vlims(c_truth, c_pred, pct=98)
+        else:
+            vmin, vmax = vlims[i]
         ax_t = axes[2*i]
         ax_p = axes[2*i + 1]
-        pcm_t = hovmoller(ax_t, lon, time, c_truth, vmin, vmax, title=f"{name.upper()}(Physics)")
-        pcm_p = hovmoller(ax_p, lon, time, c_pred,  vmin, vmax, title=f"{name.upper()}(NNs)")
+        pcm_t = hovmoller(ax_t, lon, time, c_truth, vmin, vmax, title=f"{name.upper()}({data_names[0]})")
+        pcm_p = hovmoller(ax_p, lon, time, c_pred,  vmin, vmax, title=f"{name.upper()}({data_names[1]})")
         if i == 0:
             ax_t.set_ylabel("Year")
         ax_t.set_xlabel("Longitude (°E)")

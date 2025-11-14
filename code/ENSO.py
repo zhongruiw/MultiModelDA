@@ -1,40 +1,64 @@
 import numpy as np
+import xarray as xr
 
 ################################# Utils ###################################
 class Polynomial_Detrend:
     def __init__(self, degree=1):
         """
-        Fit polynomial trends along time for each spatial point.
+        Fit polynomial trends along time for each spatial point and each calendar month seperately.
         """
         self.degree = degree # degree of the polynomial. 1 = linear, 2 = quadratic, etc.
         self.coefs = None   # shape (Nx, degree+1)
-
-    def fit(self, data):
+        self.start_month = 1
+        self._first_idx_per_month = None         # shape: (12,), first absolute time index for each month in training
+        self._fitted = False
+        
+    def fit(self, data, start_month=1):
         """
-        data : np.ndarray, shape (T, Nx) Training data.
+        data : np.ndarray, shape (Nt, Nx) Training data.
         """
-        T, Nx = data.shape
-        t = np.arange(T)  # time index
-        self.coefs = np.empty((Nx, self.degree+1))
-        for i in range(Nx):
-            # polyfit handles NaNs poorly; skip or mask if needed
-            y = data[:, i]
-            mask = np.isfinite(y)
-            if np.sum(mask) <= self.degree:
-                self.coefs[i] = np.zeros(self.degree+1)
-            else:
-                self.coefs[i] = np.polyfit(t[mask], y[mask], deg=self.degree)
+        self.start_month = start_month
+        Nt, Nx = data.shape
+        months = ((np.arange(Nt) + (start_month - 1)) % 12) + 1
+        self.coefs = np.full((12, Nx, self.degree + 1), np.nan, dtype=float)
+        self._first_idx_per_month = np.full(12, -1, dtype=int)
+        for m in range(1, 13):
+            im = np.where(months == m)[0]
+            if im.size == 0:
+                continue
+            self._first_idx_per_month[m-1] = im[0]  # store first absolute index of this month in training
+            nm = im.size
+            t_ord = np.arange(nm) # ordinal index within the month's subsequence: 0,1,2,... for training
+            for ix in range(Nx):
+                y = data[im, ix]
+                mask = np.isfinite(y)
+                if np.sum(mask) <= self.degree:
+                    self.coefs[m-1, ix] = np.zeros(self.degree+1)
+                else:
+                    self.coefs[m-1, ix] = np.polyfit(t_ord[mask], y[mask], deg=self.degree)
+        self._fitted = True
         return self
     
     def predict(self, t_points):
         """
-        Predict trend on given time points (relative to training data).
+        Predict trend on given time points (relative to training data; must be sorted, continuous).
         """
-        t_points = np.asarray(t_points) # 1D array of time indices.
-        Nx = self.coefs.shape[0]
-        trend_pred = np.empty((len(t_points), Nx))
-        for i in range(Nx):
-            trend_pred[:, i] = np.polyval(self.coefs[i], t_points)
+        if not self._fitted or self.coefs is None:
+            raise RuntimeError("Call `fit` before `predict`.")
+        t_points = np.asarray(t_points, dtype=int) # 1D array of time indices.
+        months = ((t_points + (self.start_month - 1)) % 12) + 1
+        Nx = self.coefs.shape[1]
+        trend_pred = np.full((t_points.size, Nx), np.nan, dtype=float)
+        for m in range(1, 13):
+            im = np.where(months == m)[0]
+            if im.size == 0:
+                continue
+            first_idx = self._first_idx_per_month[m-1]
+            if first_idx < 0:
+                continue # This month did not appear in training; leave as NaN
+            t_ord = ((t_points[im] - first_idx) // 12).astype(float)
+            for ix in range(Nx):
+                trend_pred[im, ix] = np.polyval(self.coefs[m-1, ix], t_ord)
         return trend_pred
 
     def detrend(self, t_points, data):
@@ -42,7 +66,9 @@ class Polynomial_Detrend:
         return data - trend
 
     def save(self, path: str):
-        np.savez_compressed(path, degree=np.int64(self.degree), coefs=self.coefs)
+        np.savez_compressed(path, degree=np.int64(self.degree), coefs=self.coefs, 
+                            start_month=np.int64(self.start_month), 
+                            first_idx_per_month=self._first_idx_per_month.astype(np.int64),)
 
     @classmethod
     def load(cls, path: str):
@@ -51,7 +77,63 @@ class Polynomial_Detrend:
         coefs = np.asarray(data["coefs"])
         obj = cls(degree=degree)
         obj.coefs = coefs
+        obj.start_month = int(data["start_month"])
+        obj._first_idx_per_month = np.asarray(data["first_idx_per_month"], dtype=int)
+        obj._fitted = True
         return obj
+
+def weighted_mean(data):
+    '''
+    area weighted mean
+    '''
+    w_lat = np.cos(np.deg2rad(data["lat"])) # Area weights (cos(lat))
+    w2d = w_lat.broadcast_like(data.isel(time=0))  # (lat, lon)
+    num = (data * w2d).sum(dim="lat", skipna=True)
+    den = w2d.where(data.notnull()).sum(dim="lat", skipna=True)
+    mean = num / den  # (time × lon)
+    return mean
+    
+def preprocess(ds: xr.Dataset, name) -> xr.Dataset:
+    # Standardize coordinates names
+    rename_map = {}
+    for old, new in [('latitude', 'lat'), ('longitude', 'lon')]:
+        if old in ds.dims or old in ds.coords: rename_map[old] = new
+    ds = ds.rename(rename_map)
+
+    # Ensure longitudes are 0–360
+    if ds.lon.max() <= 180:
+        ds = ds.assign_coords(lon=(ds.lon % 360))
+    # Ensure longitudes and latitudes are ordered
+    ds = ds.sortby('lon', ascending=True)
+    ds = ds.sortby('lat', ascending=False)
+
+    # Coarsening data to 2°×2° by averaging 2×2 cells (lat bins: [-20.5, -19.5] -> -20, lon bins: [139.5, 140.5] -> 140)
+    ds_block = ds[name].sel(lat=slice(20.5, -20.5), lon=slice(119.5, 290.5))
+    ds_2deg = ds_block.coarsen(lat=2, lon=2, boundary='trim').mean()
+    lat_new = ds_block['lat'].coarsen(lat=2, boundary='trim').mean()
+    lon_new = ds_block['lon'].coarsen(lon=2, boundary='trim').mean()
+    ds_2deg = ds_2deg.assign_coords(lat=lat_new, lon=lon_new)
+    
+    return ds_2deg
+
+def process_and_merge(file_paths, out_path, var_names):
+    """
+    Apply the pipeline to each file and merge into one NetCDF.
+    """
+    data_dic = {}
+    for path, name in zip(file_paths, var_names):
+        with xr.open_dataset(path) as ds_raw:
+            ds_proc = preprocess(ds_raw, name)
+            ds_proc = weighted_mean(ds_proc.sel(time=slice("1920-01", "2020-12"), lon=slice(120, 280), lat=slice(5, -5)))
+        data_dic[name] = ds_proc
+    ds_out = xr.Dataset(data_dic)
+    ds_out.to_netcdf(out_path, format="NETCDF4", mode="w")
+    ds_out.attrs.update({
+    "title": "Equatorial mean of model data",
+    "model": "cmip6_ACCESS-CM2_historical_r1i1p1f1_ts_1850_2014",
+    })
+    print(f"Saved to {out_path}")
+    return 
 
 
 ############################ CNNLSTM Surrogate Model ###########################
@@ -67,8 +149,8 @@ from torch.utils.data import Dataset, DataLoader
 import torch.nn.functional as F
 
 class SeriesDataset(Dataset):
-    def __init__(self, data: torch.Tensor, seq_len: int, pred_len: int = 1):
-        self.data = data.to(torch.float32)
+    def __init__(self, data: np.ndarray, seq_len: int, pred_len: int = 1):
+        self.data = data.astype(np.float32)
         self.seq_len = seq_len
         self.pred_len = pred_len
 
@@ -79,15 +161,14 @@ class SeriesDataset(Dataset):
         x = self.data[idx : idx + self.seq_len]
         y = self.data[idx + self.seq_len : idx + self.seq_len + self.pred_len]
         if self.pred_len == 1:
-            y = y.squeeze(0)
-        return x, y
-
+            y = np.squeeze(y, axis=0)
+        return torch.from_numpy(x), torch.from_numpy(y)
 
 class PiecewiseSeriesDataset(Dataset):
-    def __init__(self, segments: list[torch.Tensor], seq_len: int, pred_len: int):
+    def __init__(self, segments: list[np.ndarray], seq_len: int, pred_len: int):
         self.samples = []
         for seg in segments:
-            seg = seg.to(torch.float32)
+            seg = seg.astype(np.float32)
             if seg.shape[0] < seq_len + pred_len:
                 continue
             for i in range(seg.shape[0] - seq_len - pred_len + 1):
@@ -101,8 +182,8 @@ class PiecewiseSeriesDataset(Dataset):
     def __getitem__(self, idx):
         x, y = self.samples[idx]
         if y.shape[0] == 1:
-            y = y.squeeze(0)
-        return x, y
+            y = np.squeeze(y, axis=0)
+        return torch.from_numpy(x), torch.from_numpy(y)
 
 # Model
 class ConvBlock1D(nn.Module):
@@ -506,3 +587,88 @@ class CNNLSTMTrainer:
                 return pred_phy
         else:
             return test_pred.to("cpu")
+
+class AutoRegressiveModel:
+    def __init__(self, regime_models=[1], scalers=None, routing_matrix=None, holding_parameters=None, device=None):
+        """
+        Initialize autoregressive regime models with CTMC-based regime switching.
+        
+        Args:
+            regime_models (list of nn.Module): List of models.
+            routing_matrix (np.ndarray): CTMC routing_matrix matrix of shape (n_regimes, n_regimes).
+            holding_parameters (list or np.ndarray): Holding rates (lambda) for each regime.
+            device (str or torch.device): Device to run the simulation on.
+        """
+        self.regime_models = regime_models
+        self.scalers = scalers
+        self.routing_matrix = routing_matrix
+        self.holding_parameters = holding_parameters
+        self.n_regimes = len(regime_models)
+        self.device = device
+
+    def forecast(self, Nt, dt, x0, S0):
+        """
+        Simulate a single trajectory with autoregressive regime-switching models.
+        
+        Args:
+            Nt (int): Number of forecast steps.
+            dt (float): Time step size.
+            x0 (torch.Tensor): Initial input of shape (seq_len, channel, input_dim).
+            S0 (int): Initial regime index.
+        
+        Returns:
+            x (np.ndarray): Forecasted trajectory, shape (Nt+1, channel, input_dim).
+            S (np.ndarray): Regime path, shape (Nt+1,)
+        """
+        x0 = x0.astype(np.float32)
+        seq_len, C, Nx = x0.shape
+        x = np.zeros((Nt + 1, C, Nx), dtype=np.float32)
+        S = np.zeros(Nt + 1, dtype=int)
+        x[0], S[0] = x0[-1], S0
+
+        with torch.no_grad():
+            for n in range(1, Nt+1):
+                current_regime = S[n - 1]
+                holding_param = self.holding_parameters[current_regime]
+
+                # Regime switching
+                if np.random.rand() < holding_param * dt:
+                    S[n] = np.random.choice(self.n_regimes, p=self.routing_matrix[current_regime])
+                else:
+                    S[n] = current_regime
+
+                model = self.regime_models[current_regime]
+                scaler = self.scalers[current_regime]
+                model.eval()
+                x_norm = scaler.transform(x0)                      # (seq_len, C, Nx)
+                y_norm = model(torch.from_numpy(x_norm[None]).to(self.device)).cpu().numpy()  # (1, C, Nx)
+                x[n] = scaler.inverse(y_norm)[0]                   # (C, Nx)
+                x0 = np.concatenate((x0[1:], x[n:n+1]), axis=0)
+
+        return x, S
+
+    def ensemble_forecast(self, Nt, dt, x0, S0, ensemble_size):
+        """
+        Simulate an ensemble of regime-switching forecasts.
+        
+        Args:
+            N (int): Number of forecast steps.
+            dt (float): Time step size.
+            x0 (torch.Tensor): Initial inputs, shape (ensemble_size, seq_len, channel, input_dim).
+            S0 (array-like): Initial regimes, shape (ensemble_size,)
+            ensemble_size (int): Number of ensemble members.
+        
+        Returns:
+            X (np.ndarray): Forecast trajectories, shape (ensemble_size, N+1, channel, input_dim)
+            S (np.ndarray): Regime paths, shape (ensemble_size, N+1)
+        """
+        X = np.zeros((ensemble_size, Nt+1, *x0.shape[-2:]))
+        S = np.zeros((ensemble_size, Nt+1), dtype=int)
+        X[:, 0, :] = x0[:, -1, :]
+        S[:, 0] = S0
+
+        for i in range(ensemble_size):
+            xi, Si = self.forecast(Nt, dt, x0[i], S0[i])
+            X[i], S[i] = xi, Si
+
+        return X, S
