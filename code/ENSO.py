@@ -418,15 +418,17 @@ class ChannelZScoreScaler:
         self.eps  = state.get("eps", 1e-8)
         
 class CNNLSTMTrainer:
-    def __init__(self, data=None, piecewise=False, data_segments=None, seed=0, device=None, seq_len=1, pred_len=1, 
+    def __init__(self, data=None, piecewise=False, data_segments=None, seed=0, device=None, seq_len=1, pred_len=1, k_substeps=1, 
                  in_channels=5, out_channels=5, latent_channels=40, hidden_channels=10, latent_dim=20, lstm_hidden_dim=64, lstm_layers=1, 
-                 batch_size=20, num_epochs=20, lr=1e-3, weight_decay=1e-4, grad_clip=None, 
+                 batch_size=20, num_epochs=20, lr=1e-3, weight_decay=1e-4, grad_clip=None, lambda_tv = 1e-3, lambda_curv = 1e-3,
                  train_ratio=0.8, val_ratio=0.1, test_ratio=0.1, val_every=1, print_params=True,
                 ):
         self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
         torch.manual_seed(seed)
         np.random.seed(seed)
         self.seq_len, self.pred_len = seq_len, pred_len
+        self.k_substeps = k_substeps  # for auto-regressive multi-step prediction
+        self.lambda_tv, self.lambda_curv = lambda_tv, lambda_curv
         self.latent_channels, self.latent_dim = latent_channels, latent_dim
         self.lstm_hidden_dim, self.lstm_layers = lstm_hidden_dim, lstm_layers
         self.batch_size, self.num_epochs = batch_size, num_epochs
@@ -486,13 +488,30 @@ class CNNLSTMTrainer:
         self.val_loader = DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False)
         self.test_loader = DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=False)
 
+    def _rollout_k_steps(self, x_seq, K: int):
+        x_roll = x_seq       # (B, L, C, Nx) history ending at t_n
+        xs = [x_seq[:, -1]]  # start from state at t_n
+        for k in range(K):
+            y_step = self.model(x_roll)  # (B, C, Nx), one step
+            x_roll = torch.cat([x_roll[:, 1:], y_step.unsqueeze(1)], dim=1)  # (B, L, C, Nx), shift the window and append the new prediction
+            xs.append(y_step)            # t_n + (k+1)*Δt_model
+        return xs
+
     def train_one_epoch(self, loader):
         self.model.train()
         total_loss = 0
         for xb, yb in loader:
-            xb, yb = xb.to(self.device), yb.to(self.device)
-            pred = self.model(xb)
-            loss = self.loss_fn(pred, yb)
+            xb, yb = xb.to(self.device), yb.to(self.device)  # xb: (B,L,C,Nx), yb: (B,C,Nx) at t_n+Δt_obs
+            xs = self._rollout_k_steps(xb, self.k_substeps)  # predicted trajectory of rolling K substeps
+            pred = xs[-1]
+            # pred = self.model(xb)  # single step prediction
+            # MSE loss
+            mse = self.loss_fn(pred, yb)
+            # temporal penalties (total variation + curvature)
+            tv = sum((xs[k+1]-xs[k]).pow(2).mean() for k in range(self.k_substeps)) / self.k_substeps
+            curv = sum((xs[k+2]-2*xs[k+1]+xs[k]).pow(2).mean()
+                       for k in range(self.k_substeps-1)) / max(1, self.k_substeps-1)
+            loss = mse + self.lambda_tv*tv + self.lambda_curv*curv
             self.optimizer.zero_grad()
             loss.backward()
             if self.grad_clip is not None:
@@ -509,8 +528,16 @@ class CNNLSTMTrainer:
         preds = []
         for xb, yb in loader:
             xb, yb = xb.to(self.device), yb.to(self.device)
-            pred = self.model(xb)
-            loss = self.loss_fn(pred, yb)
+            xs = self._rollout_k_steps(xb, self.k_substeps) # roll K substeps
+            pred = xs[-1]
+            # pred = self.model(xb)  # single step prediction
+            # MSE loss
+            mse = self.loss_fn(pred, yb)
+            # temporal penalties (total variation + curvature)
+            tv = sum((xs[k+1]-xs[k]).pow(2).mean() for k in range(self.k_substeps)) / self.k_substeps
+            curv = sum((xs[k+2]-2*xs[k+1]+xs[k]).pow(2).mean()
+                       for k in range(self.k_substeps-1)) / max(1, self.k_substeps-1)
+            loss = mse + self.lambda_tv*tv + self.lambda_curv*curv
             total_loss += loss.item() * xb.size(0)
             preds.append(pred)
         avg_loss = total_loss / len(loader.dataset)
@@ -576,17 +603,18 @@ class CNNLSTMTrainer:
             checkpoint = torch.load(f"{pretrain_dir}", map_location=self.device, weights_only=False)
             self.model.load_state_dict(checkpoint["model_state_dict"])
             self.scaler.load_state_dict(checkpoint["scaler_state"])
-        test_loss, test_pred = self.evaluate(self.test_loader)
-        print(f"Test Loss (normalized space) = {test_loss:.6f}")
+        test_loss, test_pred_norm = self.evaluate(self.test_loader)
+        print(f"Test Loss (normalized space, K={self.k_substeps}) = {test_loss:.6f}")
 
         if return_physical:
-            pred_phy = self.scaler.inverse(test_pred.detach().cpu().numpy())
+            pred_phy = self.scaler.inverse(test_pred_norm.detach().cpu().numpy())
             if nondimensionalize:
                 return pred_phy / scales[None, :] # (T, C)
             else:
                 return pred_phy
         else:
-            return test_pred.to("cpu")
+            return test_pred_norm.to("cpu")
+
 
 class AutoRegressiveModel:
     def __init__(self, regime_models=[1], scalers=None, routing_matrix=None, holding_parameters=None, device=None):
@@ -672,3 +700,36 @@ class AutoRegressiveModel:
             X[i], S[i] = xi, Si
 
         return X, S
+
+class AutoRegressiveModelSingle:
+    def __init__(self, model, scaler=None, device=None):
+        """
+        Single autoregressive model (no regime switching).
+
+        Args:
+            model (nn.Module): forecast model with input shape: (batch, seq_len, C, Nx), output shape: (batch, C, Nx)
+            scaler: input/output shape (batch**, C, Nx).
+            device (str or torch.device): Device.
+        """
+        self.model = model
+        self.scaler = scaler
+        self.device = device if device is not None else torch.device("cpu")
+
+    def forecast(self, N_gap, dt, x0):
+        """
+        Autoregressive forecast using a single model.
+        """
+        x0 = np.asarray(x0, dtype=np.float32)
+        seq_len, C, Nx = x0.shape
+        x = np.zeros((N_gap + 1, C, Nx), dtype=np.float32)
+        x[0] = x0[-1]
+
+        self.model.eval()
+        with torch.no_grad():
+            for n in range(1, N_gap + 1):
+                x_norm = self.scaler.transform(x0)  # (seq_len, C, Nx)
+                x_norm_tensor = torch.from_numpy(x_norm[None]).to(self.device) # input shape (batch, seq_len, C, Nx)
+                y_norm = self.model(x_norm_tensor).detach().cpu().numpy()  # model forward, (1, C, Nx)
+                x[n] = self.scaler.inverse(y_norm)[0]
+                x0 = np.concatenate((x0[1:], x[n:n+1]), axis=0)
+        return x  # (N_gap+1, C, Nx)
