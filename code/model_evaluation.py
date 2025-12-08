@@ -114,10 +114,11 @@ import numpy as np
 # -------------------------
 # Helpers
 # -------------------------
-def _univariate_kl(x_true, x_pred, bins=30):
+def _univariate_kl(x_true, x_pred, bins=30, return_hist=False):
     """
     Estimate KL(p || q) for 1D variables using a common histogram.
     x_true, x_pred: (N,) arrays.
+    If return_hist=True : return (kl, P, Q, edges)
     """
     x_true = np.asarray(x_true, dtype=float).ravel()
     x_pred = np.asarray(x_pred, dtype=float).ravel()
@@ -130,6 +131,8 @@ def _univariate_kl(x_true, x_pred, bins=30):
     Q = H_pred / np.sum(H_pred)
     mask = (P > 0) & (Q > 0) # support restriction on KL(P || Q)
     kl = np.sum(P[mask] * (np.log(P[mask]) - np.log(Q[mask])))
+    if return_hist:
+        return kl, P, Q, edges
     return kl
 
 def _joint_kl(A_true, A_pred, bins=10, max_dim=3):
@@ -178,7 +181,8 @@ def _energy_distance(A_true, A_pred):
 # -------------------------
 def evaluate_model(models, S_obs, truth, N_gap, dt, lead_time, n_regimes,
                    rho_mse=2.0, rho_kl=2.0, rho_ed=2.0, verbose=False, 
-                   seq_len=None, bins_kl_joint=10, max_joint_dim_kl=3, bins_kl_pervar=None):
+                   seq_len=None, bins_kl_joint=10, max_joint_dim_kl=3,
+                   bins_kl_pervar=None, save_hist_pervar=False, scales=None):
     """
     Evaluate a list of models per regime using:
       - Pointwise error: MSE at lead time (paired forecast vs truth)
@@ -201,9 +205,11 @@ def evaluate_model(models, S_obs, truth, N_gap, dt, lead_time, n_regimes,
     bins_kl_joint : int, Number of bins per dimension for joint histogram KL.
     max_joint_dim_kl : int, Maximum number of dimensions used for joint KL (for D > this, KL is set to NaN).
     bins_kl_pervar: int or None, Number of bins for per-variable histogram KL. Default: None (not computed).
-    
+    scales : array-like, shape (n_vars,)
+
     Returns
     -------
+    If save_hist_pervar=True, returns 'hist_pervar': hist_pervar[v]=(p_v, q_v, edges_v, regime_id, model_id, v)
     results : dict with keys
         'mse'         : (n_models, n_regimes) MSE per model and regime
         'kl'          : (n_models, n_regimes) KL per model and regime (NaN if not computed)
@@ -212,9 +218,11 @@ def evaluate_model(models, S_obs, truth, N_gap, dt, lead_time, n_regimes,
         'weights_mse' : (n_models, n_regimes) weights from exp(-rho_mse * MSE)
         'weights_kl'  : (n_models, n_regimes) weights from exp(-rho_kl  * KL)
         'weights_ed'  : (n_models, n_regimes) weights from exp(-rho_ed  * ED)
+        'hist_pervar'  : list of length n_vars (or None if save_hist_pervar=False)
     """
     S_obs = np.asarray(S_obs)
     truth = np.asarray(truth)
+    scales = np.asarray(scales)
     if truth.ndim == 2:
         Nt, n_vars = truth.shape
     elif truth.ndim == 3:
@@ -228,6 +236,11 @@ def evaluate_model(models, S_obs, truth, N_gap, dt, lead_time, n_regimes,
     ed_matrix  = np.full((n_models, n_regimes), np.nan, dtype=float)
     kl_pervar_matrix = np.full((n_models, n_regimes, n_vars), np.nan, dtype=float)
 
+    # Histogram storage for per-variable KL (optional)
+    hist_pervar = None
+    if save_hist_pervar:
+        hist_pervar = [[] for _ in range(n_vars)] # list of (p_v, q_v, edges_v, regime_id, model_id, v)
+    
     for regime_id in range(n_regimes):
         idx_init = np.where(S_obs == regime_id)[0] # indices of initial times
         idx_target = idx_init + lead_time  # indices of target times
@@ -257,24 +270,26 @@ def evaluate_model(models, S_obs, truth, N_gap, dt, lead_time, n_regimes,
                 A_pred_flat[i] = out[-1].reshape(n_vars)
             
             # ---------- 1) Pointwise MSE ----------
-            mse_regime = np.mean((A_pred_flat - A_true_flat) ** 2)
+            mse_regime = np.mean(((A_pred_flat - A_true_flat) / scales[None, :]) ** 2)
             mse_matrix[model_id, regime_id] = mse_regime
 
             # ---------- 2) KL-based probabilistic error ----------
-            kl_regime = _joint_kl(A_true_flat, A_pred_flat,
-                                  bins=bins_kl_joint,
-                                  max_dim=max_joint_dim_kl)
+            kl_regime = _joint_kl(A_true_flat/scales[None, :], A_pred_flat/scales[None, :], bins=bins_kl_joint, max_dim=max_joint_dim_kl)
             kl_matrix[model_id, regime_id] = kl_regime
 
             # ---------- 3) Energy-distance probabilistic error ----------
-            ed_regime = _energy_distance(A_true_flat, A_pred_flat)
+            ed_regime = _energy_distance(A_true_flat/scales[None, :], A_pred_flat/scales[None, :])
             ed_matrix[model_id, regime_id] = ed_regime
 
             # ---------- 4) Per-variable KL (optional) ----------
             if bins_kl_pervar is not None:
                 kl_pervar = np.zeros(n_vars, dtype=float)
                 for v in range(n_vars):
-                    kl_v = _univariate_kl(A_true_flat[:, v], A_pred_flat[:, v], bins=bins_kl_pervar)
+                    if save_hist_pervar:
+                        kl_v, p_v, q_v, edges_v = _univariate_kl(A_true_flat[:, v], A_pred_flat[:, v],bins=bins_kl_pervar, return_hist=True)
+                        hist_pervar[v].append((p_v, q_v, edges_v, regime_id, model_id, v))
+                    else:
+                        kl_v = _univariate_kl(A_true_flat[:, v], A_pred_flat[:, v], bins=bins_kl_pervar)
                     kl_pervar[v] = kl_v
                 kl_pervar_matrix[model_id, regime_id, :] = kl_pervar
 
@@ -322,8 +337,10 @@ def evaluate_model(models, S_obs, truth, N_gap, dt, lead_time, n_regimes,
         "weights_mse": weights_mse,
         "weights_kl": weights_kl,
         "weights_ed": weights_ed,
+        "hist_pervar": hist_pervar,  # None if save_hist_pervar=False
     }
     return results
+
 
 
 
