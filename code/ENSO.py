@@ -487,6 +487,10 @@ class CNNLSTMTrainer:
         self.train_loader = DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True)
         self.val_loader = DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False)
         self.test_loader = DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=False)
+        self.total_size = total_size
+        self.train_size = train_size
+        self.val_size   = val_size
+        self.test_size  = test_size
 
     def _rollout_k_steps(self, x_seq, K: int):
         x_roll = x_seq       # (B, L, C, Nx) history ending at t_n
@@ -587,9 +591,12 @@ class CNNLSTMTrainer:
             )
         if plot:
             import matplotlib.pyplot as plt
+            x = np.arange(len(val_losses))
+            val_losses = np.asarray(val_losses)
+            mask = ~np.isnan(val_losses)
             plt.figure(figsize=(4, 3))
-            plt.plot(train_losses, label='Train Loss')
-            plt.plot(val_losses, label='Val Loss')
+            plt.plot(train_losses, marker='.', label='Train Loss')
+            plt.plot(x[mask], val_losses[mask], marker='.', label='Val Loss')  # Plot only valid points
             plt.xlabel("Epoch")
             plt.ylabel("MSE Loss")
             plt.title("Training Loss Curve")

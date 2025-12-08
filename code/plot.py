@@ -1319,9 +1319,7 @@ def plot_series(dt, sel0, sel1, interv, truth_vars, mean=None, spread=None, prio
 def plot_all_histograms_univar(hist_data, variables=['x', 'y', 'z'], figsize=(12, 4)):
     n_regimes = len(hist_data[variables[0]])
     n_vars = len(variables)
-
     fig, axes = plt.subplots(n_vars, n_regimes, figsize=figsize, squeeze=False)
-
     for i in range(n_regimes):
         for j, var in enumerate(variables):
             p_hat, q_hat, bin_edges, regime_id, model_id = hist_data[var][i]
@@ -1329,17 +1327,13 @@ def plot_all_histograms_univar(hist_data, variables=['x', 'y', 'z'], figsize=(12
             bin_edges = bin_edges[0]
             bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
             width = (bin_edges[1] - bin_edges[0]) * 0.4
-
             ax.bar(bin_centers - width/2, p_hat, width=width, color='k', label='Truth', alpha=0.7)
             ax.bar(bin_centers + width/2, q_hat, width=width, color='r', label='Model', alpha=0.7)
-
             ax.set_title(f'Regime {regime_id}, Model {model_id}', fontsize=10)
             if i == 0:
                 ax.set_ylabel(var)
-
             if i == 0 and j == 0:
                 ax.legend(fontsize=6.5)
-
     fig.tight_layout()
     return fig
 
@@ -1403,6 +1397,100 @@ def plot_3d_histogram(p, edges, title='3D Histogram', threshold=0.001):
     ax.set_ylabel('y')
     ax.set_zlabel('z')
     plt.tight_layout()
+
+def plot_all_histograms_univar_from_hist_pervar(hist_pervar, var_indices, model_ids=None, var_labels=None, figsize=(12, 4), model_names=None):
+    """
+    Plot per-variable histograms for multiple models using the saved `hist_pervar`
+
+    Parameters
+    ----------
+    hist_pervar : hist_pervar[v] is a list of tuples: (p_v, q_v, edges_v, regime_id, model_id, v)
+    var_indices : list of int
+    model_ids : list of int or None
+    var_labels : list of str or None
+    model_names: list of str or None
+    """
+    n_vars_total = len(hist_pervar)
+    if var_labels is None:
+        var_labels = [f"var {v}" for v in range(n_vars_total)]
+    # Collect all (regime_id, model_id) pairs and all model_ids present
+    regime_ids_set = set()
+    model_ids_set = set()
+    for v in range(n_vars_total):
+        for (p_v, q_v, edges_v, regime_id, model_id, v_idx) in hist_pervar[v]:
+            if p_v is not None and q_v is not None and edges_v is not None:
+                regime_ids_set.add(regime_id)
+                model_ids_set.add(model_id)
+    if model_ids is None:
+        model_ids = sorted(list(model_ids_set))
+    else:
+        model_ids = list(model_ids)
+    n_models_plot = len(model_ids)
+    regime_ids = sorted(list(regime_ids_set))
+    n_regimes = len(regime_ids)
+    n_vars_plot = len(var_indices)
+    fig, axes = plt.subplots(n_vars_plot, n_regimes, figsize=figsize, squeeze=False)
+    # Build lookup: (v, regime_id, model_id) -> (p_v, q_v, edges_v)
+    lookup = {}
+    for v in range(n_vars_total):
+        for (p_v, q_v, edges_v, regime_id, model_id, v_idx) in hist_pervar[v]:
+            lookup[(v, regime_id, model_id)] = (p_v, q_v, edges_v)
+    colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    legend_ax = None
+    for row, v in enumerate(var_indices):
+        for col, regime_id in enumerate(regime_ids):
+            ax = axes[row, col]
+            # Get all model entries for this (v, regime_id)
+            entries = []
+            for model_id in model_ids:
+                key = (v, regime_id, model_id)
+                if key in lookup:
+                    entries.append((model_id, *lookup[key]))  # (model_id, p_v, q_v, edges_v)
+            if len(entries) == 0:
+                ax.set_visible(False)
+                continue
+            # Use the first entry's edges and truth histogram as canonical
+            model_id0, p_hat0, q_hat0, edges0 = entries[0]
+            if edges0 is None or p_hat0 is None:
+                ax.set_visible(False)
+                continue
+            bin_edges = np.asarray(edges0)
+            if bin_edges.ndim != 1 or bin_edges.size < 2:
+                ax.set_visible(False)
+                continue
+            bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+            base_width = (bin_edges[1] - bin_edges[0])
+            # Plot truth histogram (same for all models/regime for this v)
+            truth_width = 0.4 * base_width
+            truth_label = 'Truth' if (legend_ax is None) else None
+            ax.bar(bin_centers,p_hat0,width=truth_width,color='k',alpha=0.5,label=truth_label)
+            # Plot each model's histogram, offset slightly
+            model_bar_width = 0.6 * base_width / max(n_models_plot, 1)
+            offsets = np.linspace(-0.225 * base_width, 0.225 * base_width, n_models_plot)
+            for idx_m, (model_id, p_hat_m, q_hat_m, edges_m) in enumerate(entries):
+                if q_hat_m is None:
+                    continue
+                offset = offsets[idx_m]
+                color = colors[idx_m % len(colors)]
+                if legend_ax is None:
+                    if model_names is not None:
+                        model_label = model_names[idx_m]
+                    else:
+                        model_label = f"Model {model_id}" 
+                ax.bar(bin_centers + offset,q_hat_m,width=model_bar_width,color=color,alpha=0.7,label=model_label)
+            if row == 0:
+                ax.set_title(f'Regime {regime_id}', fontsize=9)
+            if col == 0:
+                ax.set_ylabel(var_labels[row], fontsize=9)
+            if legend_ax is None:
+                legend_ax = ax
+    fig.tight_layout(rect=[0, 0.08, 1, 1])
+    if legend_ax is not None:
+        handles, labels = legend_ax.get_legend_handles_labels()
+        if handles:
+            fig.legend(handles, labels, loc='lower center', bbox_to_anchor=(0.5, 0.04), ncol=len(labels), fontsize=8)
+
+    return fig
 
 ######################################### Schematic ###########################################    
 def plot_vertical_gaussian_mixture(components= [
@@ -1603,61 +1691,259 @@ def plot_regime_means(mean_maps, freq, regimes=None, cmap="RdBu_r"):
     cbar = fig.colorbar(im, ax=axs, orientation="vertical", aspect=50, shrink=0.8, fraction=0.1, pad=0.02)
     fig.suptitle("Mean SSTA by regime", fontsize=12)
 
-def hovmoller_compare(truth, pred, time, lon, var_names=['ssta', 'ssha', 'taux', 'tauy', 'nhf'], data_names=['Physics', 'NNs'], vlims=None):
+def hovmoller_compare(
+    data_by_col,    # dict: col_name -> array (T, V, Nx)
+    time_by_col,    # dict: col_name -> array (T,)
+    lon,            # 1D array (Nx,)
+    var_names,      # list of variable names (rows)
+    vlims=None      # None or list of (vmin, vmax) per variable
+):
     import matplotlib.dates as mdates
-    T, V, Nx = truth.shape    
-    def symmetric_vlims(a, b, pct=98):
-        """
-        Symmetric vmin/vmax from combined data (robust to outliers via percentile).
-        a, b: arrays (T, Nx) for one variable (truth, pred)
-        """
-        both = np.concatenate([a.ravel(), b.ravel()])
-        # Guard against all-NaN slices
-        if np.all(np.isnan(both)):
-            return (-1.0, 1.0)  # fallback
-        m = np.nanpercentile(np.abs(both), pct)
-        if not np.isfinite(m) or m == 0:
-            m = np.nanmax(np.abs(both))
-            if not np.isfinite(m) or m == 0:
-                m = 1.0
-        return (-m, m)
-    
+    col_order = list(data_by_col.keys())
+    n_cols = len(col_order)
+    n_vars = len(var_names)
+
     def hovmoller(ax, Xlon, Ytime, C, vmin, vmax, title=None):
         pcm = ax.pcolormesh(
-            Xlon, Ytime, C, cmap='RdBu_r', shading='auto',
+            Xlon, Ytime, C,
+            cmap='RdBu_r', shading='auto',
             vmin=vmin, vmax=vmax
         )
         if title:
-            ax.set_title(title, fontsize=10, pad=6)
+            ax.set_title(title, fontsize=9, pad=4)
         ax.set_xlim(Xlon.min(), Xlon.max())
-        ax.set_xticks([120, 180, 240, 280])  # adjust if your lon domain differs
+        ax.set_xticks([130, 180, 230, 280])  # tweak as needed
         ax.yaxis.set_major_locator(mdates.YearLocator(1))
         ax.yaxis.set_major_formatter(mdates.DateFormatter('%Y'))
         return pcm
-    
-    ncols = 2 * len(var_names)   # truth | pred for each variable
-    fig, axes = plt.subplots(
-        nrows=1, ncols=ncols, figsize=(1.58 * ncols, 8),
-        sharey=True, constrained_layout=True
-    )
-    colorbars = []  # store for optional adjustments later
-    for i, name in enumerate(var_names):
-        c_truth = truth[:, i, :]
-        c_pred  = pred[:,  i, :]
-        if vlims is None:
-            vmin, vmax = symmetric_vlims(c_truth, c_pred, pct=98)
-        else:
-            vmin, vmax = vlims[i]
-        ax_t = axes[2*i]
-        ax_p = axes[2*i + 1]
-        pcm_t = hovmoller(ax_t, lon, time, c_truth, vmin, vmax, title=f"{name.upper()}({data_names[0]})")
-        pcm_p = hovmoller(ax_p, lon, time, c_pred,  vmin, vmax, title=f"{name.upper()}({data_names[1]})")
-        if i == 0:
-            ax_t.set_ylabel("Year")
-        ax_t.set_xlabel("Longitude (°E)")
-        ax_p.set_xlabel("Longitude (°E)")
-        cb = fig.colorbar(
-            pcm_p, ax=[ax_t, ax_p], orientation='horizontal',
-            fraction=0.046, pad=0.02, aspect=30
+
+    fig, axes = plt.subplots(nrows=n_vars, ncols=n_cols, figsize=(1.5 * n_cols, 4.5 * n_vars), sharey=True, constrained_layout=True)
+    if n_vars == 1:
+        axes = np.expand_dims(axes, axis=0)  # -> (1, n_cols)
+    pcm_row = [None] * n_vars
+    for v_idx, vname in enumerate(var_names):
+        vmin, vmax = vlims[v_idx]
+        for c_idx, col_name in enumerate(col_order):
+            arr  = data_by_col[col_name]     # (T, V, Nx)
+            time = time_by_col[col_name]     # (T,)
+            C    = arr[:, v_idx, :]          # (T, Nx)
+            ax = axes[v_idx, c_idx]
+            title = col_name if v_idx == 0 else None
+            pcm = hovmoller(ax, lon, time, C, vmin, vmax, title=title)
+            pcm_row[v_idx] = pcm
+            if c_idx == 0:
+                ax.set_ylabel("Year")
+            else:
+                ax.set_ylabel("")
+            if v_idx == n_vars - 1:
+                ax.set_xlabel("Lon (°E)")
+    for v_idx, vname in enumerate(var_names):
+        last_ax = axes[v_idx, -1]
+        cb = fig.colorbar(pcm_row[v_idx], ax=last_ax, fraction=0.08, pad=0.02, aspect=30)
+        cb.set_label(vname.upper())
+        
+    return fig
+
+def plot_enso_da_series_and_weights(
+    time,                  # 1D array of datetimes, shape (T,)
+    lon_idx,               # integer index of longitude to plot
+    lon,                   # longitude
+    truth,                 # (T, 2, Nx): truth for SST, SSH
+    mean_list,             # list of (T, 2, Nx): analysis means for each method
+    spread_list=None,      # list of (T, 2, Nx): analysis spreads per method
+    method_labels=None,    # list of str, same length as mean_list
+    regime_weights=None,   # (T, n_regimes) or None: prior regime weights (GM-MM)
+    prior_model_weights=None,     # (T, n_models) or None
+    posterior_model_weights=None, # (T, n_models) or None
+    sel0=0, sel1=None, interv=1,
+    warmup=24,
+    var_names=('SST', 'SSH'),
+    colors=('g', 'b', 'r', 'orange', 'purple', 'brown'),
+    line_width=1.5,
+    title=None,
+):
+    import matplotlib.dates as mdates
+    time = np.asarray(time)
+    T = time.shape[0]
+    if sel1 is None:
+        sel1 = T
+    idx = slice(sel0, sel1, interv)
+    time_sel = time[idx]
+    colors = list(colors)
+    fig, axes = plt.subplots(5, 1,figsize=(10, 10),sharex=True,gridspec_kw={'height_ratios': [1, 1, 1, 1, 1]})
+    lines, labels = [], []
+    if title is not None:
+        axes[0].set_title(title, fontsize=14)
+
+    # -------- helper: metric box (Corr/RMSE) --------
+    def _add_corr_rmse_box(ax, truth_arr, mean_list_arr, colors_list, warmup):
+        corrs, rmses = [], []
+        for mean in mean_list_arr:
+            truth_i = truth_arr[warmup:]
+            mean_i  = mean[warmup:]
+            corr = np.corrcoef(truth_i, mean_i)[0, 1]
+            rmse = np.sqrt(np.mean((truth_i - mean_i) ** 2))
+            corrs.append(f"{corr:.3f}")
+            rmses.append(f"{rmse:.3f}")
+        corr_row = r"Corr:  " + "   ".join(corrs)
+        rmse_row = r"RMSE: " + "   ".join(rmses)
+        metrics_box_text = f"{corr_row}\n{rmse_row}"
+        # invisible text just to create a bounding box
+        ax.text(
+            0.99, 0.94,
+            metrics_box_text,
+            transform=ax.transAxes,
+            fontsize=9,
+            fontweight='bold',
+            verticalalignment='top',
+            horizontalalignment='right',
+            color=(0, 0, 0, 0),
+            bbox=dict(boxstyle='round', facecolor='white', alpha=0.7)
         )
-        colorbars.append(cb)
+        # Overlay visible text in each cell
+        line_spacing_x = 0.058
+        line_spacing_y = 0.10
+        ax.text(
+            0.82, 0.94,
+            'Corr:',
+            transform=ax.transAxes,
+            fontsize=9,
+            fontweight='bold',
+            verticalalignment='top',
+            horizontalalignment='right',
+            color='black'
+        )
+        ax.text(
+            0.83, 0.94 - line_spacing_y,
+            'RMSE:',
+            transform=ax.transAxes,
+            fontsize=9,
+            fontweight='bold',
+            verticalalignment='top',
+            horizontalalignment='right',
+            color='black'
+        )
+        for j, color in enumerate(colors_list[:len(corrs)]):
+            ax.text(
+                1.05 - (len(corrs)-j) * line_spacing_x, 0.94,
+                corrs[j],
+                transform=ax.transAxes,
+                fontsize=9,
+                fontweight='bold',
+                verticalalignment='top',
+                horizontalalignment='right',
+                color=color
+            )
+            ax.text(
+                1.05 - (len(corrs)-j) * line_spacing_x, 0.94 - line_spacing_y,
+                rmses[j],
+                transform=ax.transAxes,
+                fontsize=9,
+                fontweight='bold',
+                verticalalignment='top',
+                horizontalalignment='right',
+                color=color
+            )
+
+    # --------------- Rows 1–2: SST, SSH -----------------
+    for v_idx in range(2):
+        ax = axes[v_idx]
+        truth_series = truth[sel0:sel1:interv, v_idx, lon_idx]
+        l_truth, = ax.plot(time_sel, truth_series, 'k', linewidth=line_width)
+        ax.set_ylabel(f"{var_names[v_idx]}", fontsize=12)
+        # ax.set_ylabel(f"${{\\text{{{var_names[v_idx]}}}}}_{{{lon:.1f}\\degree E}}$", fontsize=12)
+
+        ax.tick_params(labelsize=9)
+        if v_idx == 0:
+            lines.append(l_truth)
+            labels.append('Truth')
+        # methods
+        for mean, spread, label, color in zip(mean_list, spread_list, method_labels, colors):
+            mean_series = mean[sel0:sel1:interv, v_idx, lon_idx]
+            l_mean, = ax.plot(time_sel, mean_series, color=color, linewidth=line_width)
+            if v_idx == 0:
+                lines.append(l_mean)
+                labels.append(label)
+            if spread is not None:
+                std_series = spread[sel0:sel1:interv, v_idx, lon_idx]
+                ax.fill_between(time_sel, mean_series - 2*std_series, mean_series + 2*std_series, color=color, alpha=0.2)
+        # Corr/RMSE box
+        truth_full_1d = truth[:, v_idx, lon_idx]
+        mean_full_list = [m[:, v_idx, lon_idx] for m in mean_list]
+        _add_corr_rmse_box(ax, truth_full_1d, mean_full_list, colors, warmup)
+
+    # -------- helper: generic heatmap on existing axis --------
+    def _plot_weights_heatmap_on_axis(ax, time_sel, weights_sel, row_labels, ylabel=None):
+        W = np.asarray(weights_sel)  # (T_sel, K)
+        T_sel, K = W.shape
+        t0 = mdates.date2num(time_sel[0])
+        t1 = mdates.date2num(time_sel[-1])
+        im = ax.imshow(
+            W.T, cmap='inferno',
+            aspect='auto',
+            origin='lower',
+            interpolation='nearest',
+            vmin=0.0,
+            vmax=1.0,
+            extent=[t0, t1, -0.5, K - 0.5]
+        )
+        ax.set_yticks(np.arange(K))
+        ax.set_yticklabels(row_labels, fontsize=9)
+        if ylabel is not None:
+            ax.set_ylabel(ylabel, fontsize=12)
+        ax.xaxis_date()
+        ax.xaxis.set_major_locator(mdates.YearLocator(2))
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
+        return im
+        
+    heatmap_axes = []
+    im_for_cbar = None
+    # --------------- Row 3: regime weights heatmap ----------------
+    ax3 = axes[2]
+    regime_weights = np.asarray(regime_weights)  # (T, n_regimes)
+    rw_sel = regime_weights[sel0:sel1:interv, :]
+    _, n_regimes = rw_sel.shape
+    regime_labels = [f"R{k}" for k in range(n_regimes)]
+    im_reg = _plot_weights_heatmap_on_axis(
+        ax3, time_sel, rw_sel,
+        row_labels=regime_labels,
+        ylabel="Regime"
+    )
+    heatmap_axes.append(ax3)
+    im_for_cbar = im_reg
+
+    # --------------- Row 4: prior model weights heatmap ------------
+    ax4 = axes[3]
+    pmw_sel = np.asarray(prior_model_weights)[sel0:sel1:interv, :]  # (T_sel, M)
+    M = pmw_sel.shape[1]
+    model_labels = [f"M{m}" for m in range(M)]
+    im_prior = _plot_weights_heatmap_on_axis(
+        ax4, time_sel, pmw_sel,
+        row_labels=model_labels,
+        ylabel="Model (prior)"
+    )
+    heatmap_axes.append(ax4)
+    im_for_cbar = im_prior  # update candidate
+
+    # --------------- Row 5: posterior model weights heatmap --------
+    ax5 = axes[4]
+    post_sel = np.asarray(posterior_model_weights)[sel0:sel1:interv, :]
+    M = post_sel.shape[1]
+    model_labels = [f"M{m}" for m in range(M)]
+    im_post = _plot_weights_heatmap_on_axis(
+        ax5, time_sel, post_sel,
+        row_labels=model_labels,
+        ylabel="Model (posterior)"
+    )
+    ax5.set_xlabel("Time", fontsize=12)
+    heatmap_axes.append(ax5)
+    # use posterior as the representative for the colorbar
+    im_for_cbar = im_post
+
+    fig.legend(handles=lines,labels=labels,loc='upper center',bbox_to_anchor=(0.52, 0.99),ncol=min(6, len(labels)),fontsize=10,)
+    fig.subplots_adjust(left=0.07,right=0.98,bottom=0.1,top=0.95,hspace=0.1)
+    cax = fig.add_axes([0.37, 0.04, 0.3, 0.01])
+    cbar = fig.colorbar(im_for_cbar, cax=cax, orientation='horizontal')
+    cbar.ax.tick_params(labelsize=8)
+
+    return fig
