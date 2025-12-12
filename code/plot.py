@@ -1746,20 +1746,18 @@ def hovmoller_compare(
 
 def plot_enso_da_series_and_weights(
     time,                  # 1D array of datetimes, shape (T,)
-    lon_idx,               # integer index of longitude to plot
-    lon,                   # longitude
-    truth,                 # (T, 2, Nx): truth for SST, SSH
-    mean_list,             # list of (T, 2, Nx): analysis means for each method
-    spread_list=None,      # list of (T, 2, Nx): analysis spreads per method
-    method_labels=None,    # list of str, same length as mean_list
-    regime_weights=None,   # (T, n_regimes) or None: prior regime weights (GM-MM)
-    prior_model_weights=None,     # (T, n_models) or None
-    posterior_model_weights=None, # (T, n_models) or None
+    series_list,           # list of arrays, each (T, n_vars); series_list[0] = "truth"
+    spread_list=None,      # list of arrays or None, same length as series_list, each (T, n_vars)
+    series_labels=None,    # list of str, len = len(series_list) (e.g. ["Truth", "Single", "StdMM", "GMMM"])
+    weights_list=None,     # list of arrays, each (T, K_r) for one heatmap row
+    weights_ylabels=None,  # list of str, len = len(weights_list), y-label of each heatmap row
+    weights_rowlabels_list=None,  # list of list-of-str for ticklabels per row (or None for auto)
     sel0=0, sel1=None, interv=1,
     warmup=24,
-    var_names=('SST', 'SSH'),
-    colors=('g', 'b', 'r', 'orange', 'purple', 'brown'),
+    var_names=None,        # list of length n_vars, e.g. ["Niño3 SST", "Niño3.4 SST", ...]
+    colors=('k', 'g', 'b', 'r', 'orange', 'purple', 'brown'),
     line_width=1.5,
+    row_height=1.5,
     title=None,
 ):
     import matplotlib.dates as mdates
@@ -1767,10 +1765,23 @@ def plot_enso_da_series_and_weights(
     T = time.shape[0]
     if sel1 is None:
         sel1 = T
-    idx = slice(sel0, sel1, interv)
-    time_sel = time[idx]
+    t_idx = slice(sel0, sel1, interv)
+    time_sel = time[t_idx]
+    n_series = len(series_list)
+    series_list = [np.asarray(s) for s in series_list]
+    if spread_list is None:
+        spread_list = [None] * n_series
+    T0, n_vars = series_list[0].shape
     colors = list(colors)
-    fig, axes = plt.subplots(5, 1,figsize=(10, 10),sharex=True,gridspec_kw={'height_ratios': [1, 1, 1, 1, 1]})
+    if weights_list is None:
+        weights_list = []
+    n_weight_rows = len(weights_list)
+    if weights_rowlabels_list is None:
+        weights_rowlabels_list = [None] * n_weight_rows
+    n_rows = n_vars + n_weight_rows
+    fig, axes = plt.subplots(n_rows, 1, figsize=(10, row_height*n_rows), sharex=True, gridspec_kw={'height_ratios':[1.0]*n_vars+[1.0]*n_weight_rows})
+    if n_rows == 1:
+        axes = np.array([axes])
     lines, labels = [], []
     if title is not None:
         axes[0].set_title(title, fontsize=14)
@@ -1789,8 +1800,9 @@ def plot_enso_da_series_and_weights(
         rmse_row = r"RMSE: " + "   ".join(rmses)
         metrics_box_text = f"{corr_row}\n{rmse_row}"
         # invisible text just to create a bounding box
+        box_x, box_y = 0.995, 0.95
         ax.text(
-            0.99, 0.94,
+            box_x, box_y,
             metrics_box_text,
             transform=ax.transAxes,
             fontsize=9,
@@ -1801,10 +1813,10 @@ def plot_enso_da_series_and_weights(
             bbox=dict(boxstyle='round', facecolor='white', alpha=0.7)
         )
         # Overlay visible text in each cell
-        line_spacing_x = 0.058
-        line_spacing_y = 0.10
+        line_spacing_x = 0.055
+        line_spacing_y = 0.12
         ax.text(
-            0.82, 0.94,
+            0.82, box_y,
             'Corr:',
             transform=ax.transAxes,
             fontsize=9,
@@ -1814,7 +1826,7 @@ def plot_enso_da_series_and_weights(
             color='black'
         )
         ax.text(
-            0.83, 0.94 - line_spacing_y,
+            0.83, box_y - line_spacing_y,
             'RMSE:',
             transform=ax.transAxes,
             fontsize=9,
@@ -1823,9 +1835,9 @@ def plot_enso_da_series_and_weights(
             horizontalalignment='right',
             color='black'
         )
-        for j, color in enumerate(colors_list[:len(corrs)]):
+        for j, color in enumerate(colors_list):
             ax.text(
-                1.05 - (len(corrs)-j) * line_spacing_x, 0.94,
+                1.05 - (len(corrs)-j) * line_spacing_x, box_y,
                 corrs[j],
                 transform=ax.transAxes,
                 fontsize=9,
@@ -1835,7 +1847,7 @@ def plot_enso_da_series_and_weights(
                 color=color
             )
             ax.text(
-                1.05 - (len(corrs)-j) * line_spacing_x, 0.94 - line_spacing_y,
+                1.05 - (len(corrs)-j) * line_spacing_x, box_y - line_spacing_y,
                 rmses[j],
                 transform=ax.transAxes,
                 fontsize=9,
@@ -1845,32 +1857,24 @@ def plot_enso_da_series_and_weights(
                 color=color
             )
 
-    # --------------- Rows 1–2: SST, SSH -----------------
-    for v_idx in range(2):
+    # --------------- Signal rows -----------------
+    for v_idx in range(n_vars):
         ax = axes[v_idx]
-        truth_series = truth[sel0:sel1:interv, v_idx, lon_idx]
-        l_truth, = ax.plot(time_sel, truth_series, 'k', linewidth=line_width)
-        ax.set_ylabel(f"{var_names[v_idx]}", fontsize=12)
-        # ax.set_ylabel(f"${{\\text{{{var_names[v_idx]}}}}}_{{{lon:.1f}\\degree E}}$", fontsize=12)
-
+        ax.set_ylabel(var_names[v_idx], fontsize=12)
         ax.tick_params(labelsize=9)
-        if v_idx == 0:
-            lines.append(l_truth)
-            labels.append('Truth')
-        # methods
-        for mean, spread, label, color in zip(mean_list, spread_list, method_labels, colors):
-            mean_series = mean[sel0:sel1:interv, v_idx, lon_idx]
-            l_mean, = ax.plot(time_sel, mean_series, color=color, linewidth=line_width)
+        for mean_series, spread_series, label, color in zip(series_list, spread_list, series_labels, colors):
+            mean = mean_series[t_idx, v_idx]
+            l_mean, = ax.plot(time_sel, mean, color=color, linewidth=line_width)
             if v_idx == 0:
                 lines.append(l_mean)
                 labels.append(label)
-            if spread is not None:
-                std_series = spread[sel0:sel1:interv, v_idx, lon_idx]
-                ax.fill_between(time_sel, mean_series - 2*std_series, mean_series + 2*std_series, color=color, alpha=0.2)
+            if spread_series is not None:
+                std = spread_series[t_idx, v_idx]
+                ax.fill_between(time_sel, mean - 2*std, mean + 2*std, color=color, alpha=0.2)
         # Corr/RMSE box
-        truth_full_1d = truth[:, v_idx, lon_idx]
-        mean_full_list = [m[:, v_idx, lon_idx] for m in mean_list]
-        _add_corr_rmse_box(ax, truth_full_1d, mean_full_list, colors, warmup)
+        truth = series_list[0][:, v_idx]
+        mean_list = [m[:, v_idx] for m in series_list[1:]]
+        _add_corr_rmse_box(ax, truth, mean_list, colors[1:], warmup)
 
     # -------- helper: generic heatmap on existing axis --------
     def _plot_weights_heatmap_on_axis(ax, time_sel, weights_sel, row_labels, ylabel=None):
@@ -1896,54 +1900,31 @@ def plot_enso_da_series_and_weights(
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
         return im
         
-    heatmap_axes = []
     im_for_cbar = None
-    # --------------- Row 3: regime weights heatmap ----------------
-    ax3 = axes[2]
-    regime_weights = np.asarray(regime_weights)  # (T, n_regimes)
-    rw_sel = regime_weights[sel0:sel1:interv, :]
-    _, n_regimes = rw_sel.shape
-    regime_labels = [f"R{k}" for k in range(n_regimes)]
-    im_reg = _plot_weights_heatmap_on_axis(
-        ax3, time_sel, rw_sel,
-        row_labels=regime_labels,
-        ylabel="Regime"
-    )
-    heatmap_axes.append(ax3)
-    im_for_cbar = im_reg
-
-    # --------------- Row 4: prior model weights heatmap ------------
-    ax4 = axes[3]
-    pmw_sel = np.asarray(prior_model_weights)[sel0:sel1:interv, :]  # (T_sel, M)
-    M = pmw_sel.shape[1]
-    model_labels = [f"M{m}" for m in range(M)]
-    im_prior = _plot_weights_heatmap_on_axis(
-        ax4, time_sel, pmw_sel,
-        row_labels=model_labels,
-        ylabel="Model (prior)"
-    )
-    heatmap_axes.append(ax4)
-    im_for_cbar = im_prior  # update candidate
-
-    # --------------- Row 5: posterior model weights heatmap --------
-    ax5 = axes[4]
-    post_sel = np.asarray(posterior_model_weights)[sel0:sel1:interv, :]
-    M = post_sel.shape[1]
-    model_labels = [f"M{m}" for m in range(M)]
-    im_post = _plot_weights_heatmap_on_axis(
-        ax5, time_sel, post_sel,
-        row_labels=model_labels,
-        ylabel="Model (posterior)"
-    )
-    ax5.set_xlabel("Time", fontsize=12)
-    heatmap_axes.append(ax5)
-    # use posterior as the representative for the colorbar
-    im_for_cbar = im_post
+    row_idx = n_vars
+    # --------------- Weight heatmap rows -----------------
+    for W, ylabel, ticklabels in zip(weights_list, weights_ylabels, weights_rowlabels_list):
+        ax_w = axes[row_idx]
+        W = np.asarray(W)
+        W_sel = W[t_idx]  # (T_sel, K)
+        _, K = W_sel.shape
+        if ticklabels is None:
+            ticklabels = [f"{k}" for k in range(K)]
+        im_w = _plot_weights_heatmap_on_axis(
+            ax_w, time_sel, W_sel,
+            row_labels=ticklabels,
+            ylabel=ylabel
+        )
+        im_for_cbar = im_w
+        row_idx += 1
+    axes[-1].set_xlabel("Time", fontsize=12)
 
     fig.legend(handles=lines,labels=labels,loc='upper center',bbox_to_anchor=(0.52, 0.99),ncol=min(6, len(labels)),fontsize=10,)
-    fig.subplots_adjust(left=0.07,right=0.98,bottom=0.1,top=0.95,hspace=0.1)
-    cax = fig.add_axes([0.37, 0.04, 0.3, 0.01])
-    cbar = fig.colorbar(im_for_cbar, cax=cax, orientation='horizontal')
-    cbar.ax.tick_params(labelsize=8)
+    fig.subplots_adjust(left=0.07,right=0.98,bottom=0.08,top=0.96,hspace=0.1)
+    if im_for_cbar is not None:
+        cax = fig.add_axes([0.37, 0.03, 0.3, 0.008])
+        cbar = fig.colorbar(im_for_cbar, cax=cax, orientation='horizontal')
+        cbar.ax.tick_params(labelsize=8)
 
     return fig
+
