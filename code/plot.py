@@ -1615,7 +1615,7 @@ def plot_nino34_with_regimes(
     for lab in uniq:
         sel = lab_plot == lab
         ax.scatter(x_plot[sel], y_plot[sel], s=14, color=color_map[lab], label=name_map[lab], zorder=3)
-    ax.set_ylabel("SST anomaly (°C)")
+    ax.set_ylabel("Niño index")
     ax.set_xlabel(xlabel)
     ax.set_title(title)
     ax.grid(True, alpha=0.3)
@@ -1696,7 +1696,8 @@ def hovmoller_compare(
     time_by_col,    # dict: col_name -> array (T,)
     lon,            # 1D array (Nx,)
     var_names,      # list of variable names (rows)
-    vlims=None      # None or list of (vmin, vmax) per variable
+    vlims=None,     # None or list of (vmin, vmax) per variable
+    yr_locator=1, 
 ):
     import matplotlib.dates as mdates
     col_order = list(data_by_col.keys())
@@ -1713,7 +1714,7 @@ def hovmoller_compare(
             ax.set_title(title, fontsize=9, pad=4)
         ax.set_xlim(Xlon.min(), Xlon.max())
         ax.set_xticks([130, 180, 230, 280])  # tweak as needed
-        ax.yaxis.set_major_locator(mdates.YearLocator(1))
+        ax.yaxis.set_major_locator(mdates.YearLocator(yr_locator))
         ax.yaxis.set_major_formatter(mdates.DateFormatter('%Y'))
         return pcm
 
@@ -1759,6 +1760,7 @@ def plot_enso_da_series_and_weights(
     line_width=1.5,
     row_height=1.5,
     title=None,
+    yr_locator=2,
 ):
     import matplotlib.dates as mdates
     time = np.asarray(time)
@@ -1896,7 +1898,7 @@ def plot_enso_da_series_and_weights(
         if ylabel is not None:
             ax.set_ylabel(ylabel, fontsize=12)
         ax.xaxis_date()
-        ax.xaxis.set_major_locator(mdates.YearLocator(2))
+        ax.xaxis.set_major_locator(mdates.YearLocator(yr_locator))
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
         return im
         
