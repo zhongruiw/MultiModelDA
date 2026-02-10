@@ -222,13 +222,16 @@ def evaluate_model(models, S_obs, truth, N_gap, dt, lead_time, n_regimes,
     """
     S_obs = np.asarray(S_obs)
     truth = np.asarray(truth)
-    scales = np.asarray(scales)
     if truth.ndim == 2:
         Nt, n_vars = truth.shape
     elif truth.ndim == 3:
         Nt, C, Nx = truth.shape
         n_vars = C * Nx
     n_models = len(models)
+    if scales is None:
+        scales = np.ones((n_vars))
+    else:
+        scales = np.asarray(scales)
 
     # Error matrices
     mse_matrix = np.full((n_models, n_regimes), np.nan, dtype=float)
