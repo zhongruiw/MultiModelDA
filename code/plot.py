@@ -2,8 +2,143 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 
-################################################### Model #####################################################    
-def plot_trajectories(x_truth, y_truth, z_truth, dt, sel0=10000, sel1=20000, interv=10):
+################################################### Model #####################################################  
+def format_param(value):
+    """Format a parameter value, using fractions for non-integer rationals."""
+    frac = Fraction(value).limit_denominator(100)
+    if frac.denominator == 1:
+        return str(frac.numerator)
+    else:
+        return f"{frac.numerator}/{frac.denominator}"
+
+def plot_L63_regimes(t, z_truth, S, regimes, dt,
+                     z_indep_list=None,
+                     t_display_max=200, max_lag_time=20.0,
+                     figsize=(14, 11), savefig=None):
+    """
+    Plot Lorenz-63 regime-switching diagnostics.
+
+    Panels (a)-(b): z time series | KDE PDF | ACF for each regime
+                     (independently simulated single-regime data).
+    Panel (c): same for the full regime-switching model.
+    Panel (d): regime sequence (shares x-axis with time series panels).
+
+    Parameters
+    ----------
+    t : ndarray, shape (N,) Time array.
+    z_truth : ndarray, shape (N,) Full z trajectory from the regime-switching model.
+    S : ndarray of int, shape (N,) Regime index at each time step.
+    regimes : list of dict, Each dict has keys 'sigma', 'beta', 'rho'.
+    dt : float, Time step size.
+    z_indep_list : list of ndarray, each shape (N,) Independently simulated z trajectories, one per regime.
+    t_display_max : float, Max time shown in time-series panels.
+    max_lag_time : float, Max lag (in time units) for ACF.
+    figsize : tuple, Figure size.
+    savefig : str or Nonem,If provided, save figure to this path.
+    """
+    n_regimes = len(regimes)
+    max_lag = int(max_lag_time / dt)
+    idx_display = t <= t_display_max
+    lag_axis = np.arange(max_lag + 1) * dt
+
+    acf_full = acf(z_truth, nlags=max_lag, fft=True)
+
+    regime_labels = [f'{k}' for k in range(n_regimes)]
+
+    # Build panel list
+    panel_labels = [f'({chr(97 + i)})' for i in range(n_regimes + 2)]
+    panel_data = []
+    for k in range(n_regimes):
+        r = regimes[k]
+        beta_str = format_param(r['beta'])
+        title = (f"Regime {k}  "
+                 rf"($\sigma$={r['sigma']}, $\rho$={r['rho']}, $\beta$={beta_str})")
+        z_k = z_indep_list[k]
+        acf_k = acf(z_k, nlags=max_lag, fft=True)
+        panel_data.append((z_k, z_k, acf_k, title))
+    acf_full_vals = acf(z_truth, nlags=max_lag, fft=True)
+    panel_data.append((z_truth, z_truth, acf_full_vals, 'Two-regime model'))
+
+    n_ts_rows = len(panel_data)
+    n_rows = n_ts_rows + 1
+
+    fig = plt.figure(figsize=figsize)
+    gs = gridspec.GridSpec(n_rows, 3,
+                           width_ratios=[5, 1, 1],
+                           height_ratios=[1] * n_ts_rows + [1],
+                           hspace=0.3, wspace=0.15,
+                           left=0.07, right=0.97, top=0.95, bottom=0.06)
+
+    ax_ts_first = None
+
+    for row, (z_ts, z_vals, acf_vals, title) in enumerate(panel_data):
+        # --- Time series ---
+        if ax_ts_first is None:
+            ax_ts = fig.add_subplot(gs[row, 0])
+            ax_ts_first = ax_ts
+        else:
+            ax_ts = fig.add_subplot(gs[row, 0], sharex=ax_ts_first)
+
+        ax_ts.plot(t[idx_display], z_ts[idx_display],
+                   color='k', lw=0.5, rasterized=True)
+        ax_ts.set_ylabel('$z$', fontsize=11)
+        ax_ts.set_title(f'{panel_labels[row]}  {title}', fontsize=11, loc='left')
+        ax_ts.tick_params(labelsize=9)
+        if row < n_ts_rows:
+            plt.setp(ax_ts.get_xticklabels(), visible=False)
+        # else:
+        #     ax_ts.set_xlabel('Time', fontsize=11)
+
+        # --- PDF (Gaussian KDE + Gaussian fit) ---
+        ax_pdf = fig.add_subplot(gs[row, 1])
+        valid = z_vals[~np.isnan(z_vals)]
+        kde = gaussian_kde(valid)
+        z_grid = np.linspace(valid.min(), valid.max(), 300)
+        ax_pdf.plot(kde.evaluate(z_grid), z_grid, color='k', lw=.8)
+        mean, std = valid.mean(), valid.std()
+        # ax_pdf.plot(norm.pdf(z_grid, mean, std), z_grid, 'k--', lw=0.9, label='Gaussian fit')
+        ax_pdf.set_ylim(ax_ts.get_ylim())
+        ax_pdf.set_yticklabels([])
+        ax_pdf.tick_params(labelsize=9)
+        if row == 0:
+            ax_pdf.set_title('PDF', fontsize=10)
+        if row == n_ts_rows - 1:
+            ax_pdf.set_xlabel('Density', fontsize=10)
+
+        # --- ACF ---
+        ax_acf = fig.add_subplot(gs[row, 2])
+        ax_acf.plot(lag_axis, acf_vals, color='k', lw=.8)
+        ax_acf.axhline(0, color='grey', lw=0.5, ls='--')
+        ax_acf.set_xlim(0, max_lag_time)
+        ax_acf.tick_params(labelsize=9)
+        if row == 0:
+            ax_acf.set_title('ACF', fontsize=11)
+        if row == n_ts_rows - 1:
+            ax_acf.set_xlabel('Lag', fontsize=11)
+
+    # --- Panel (d): Regime sequence ---
+    ax_regime = fig.add_subplot(gs[n_ts_rows, 0], sharex=ax_ts_first)
+    ax_regime.plot(t[idx_display], S[idx_display],
+                   color='k', lw=0.6, drawstyle='steps-post')
+    ax_regime.set_ylim(-0.15, n_regimes - 1 + 0.15)
+    ax_regime.set_yticks(range(n_regimes))
+    ax_regime.set_yticklabels(regime_labels, fontsize=9)
+    ax_regime.set_xlabel('Time', fontsize=11)
+    ax_regime.set_title(f'{panel_labels[n_ts_rows]}  Regime sequence',fontsize=11, loc='left')
+    ax_regime.tick_params(labelsize=9)
+    ax_ts_first.set_xlim(0, t_display_max)
+
+    # # Global legend for Gaussian fit
+    # fig.legend([Line2D([0], [0], color='k', ls='--', lw=0.9)],
+    #            ['Gaussian fit'], loc='upper right',
+    #            bbox_to_anchor=(0.97, 0.97), fontsize=9, framealpha=0.8)
+
+    if savefig is not None:
+        plt.savefig(savefig, dpi=200, bbox_inches='tight')
+
+    return fig
+
+def plot_L63_trajectories(x_truth, y_truth, z_truth, dt, sel0=10000, sel1=20000, interv=10):
     xaxis = np.arange(sel0 * dt, sel1 * dt, interv * dt)
 
     fig = plt.figure(figsize=(10, 6))

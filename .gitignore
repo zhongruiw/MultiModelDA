@@ -11,3 +11,5 @@ data/TrueData.mat
 /code/matlab
 /reports
 code/ENSO1.ipynb
+/code/legacy
+/code/tuning

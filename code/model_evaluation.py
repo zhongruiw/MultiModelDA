@@ -238,6 +238,7 @@ def evaluate_model(models, S_obs, truth, N_gap, dt, lead_time, n_regimes,
     kl_matrix  = np.full((n_models, n_regimes), np.nan, dtype=float)
     ed_matrix  = np.full((n_models, n_regimes), np.nan, dtype=float)
     kl_pervar_matrix = np.full((n_models, n_regimes, n_vars), np.nan, dtype=float)
+    me_matrix  = np.full((n_models, n_regimes), np.nan, dtype=float)
 
     # Histogram storage for per-variable KL (optional)
     hist_pervar = None
@@ -296,9 +297,13 @@ def evaluate_model(models, S_obs, truth, N_gap, dt, lead_time, n_regimes,
                     kl_pervar[v] = kl_v
                 kl_pervar_matrix[model_id, regime_id, :] = kl_pervar
 
+            # ---------- 5) Pointwise Mean bias ----------
+            me_regime = np.mean(((A_pred_flat - A_true_flat) / scales[None, :]))
+            me_matrix[model_id, regime_id] = me_regime
+
             if verbose:
                 print(f"[Regime {regime_id:d}, Model {model_id:d}] "
-                      f"MSE={mse_regime:.4e}, KL={kl_regime:.4e}, ED={ed_regime:.4e}")
+                      f"MSE={mse_regime:.4e}, KL={kl_regime:.4e}, ED={ed_regime:.4e}, ME={me_regime:.4e}")
 
     # Turn errors into scores via exp(-rho * error), then normalize to weights
     def _errors_to_scores_weights(err_matrix, rho):
@@ -334,6 +339,7 @@ def evaluate_model(models, S_obs, truth, N_gap, dt, lead_time, n_regimes,
         "kl": kl_matrix,
         "ed": ed_matrix,
         "kl_pervar": kl_pervar_matrix,
+        "me": me_matrix,
         "scores_mse": scores_mse,
         "scores_kl": scores_kl,  # based on joint KL
         "scores_ed": scores_ed,
@@ -343,8 +349,6 @@ def evaluate_model(models, S_obs, truth, N_gap, dt, lead_time, n_regimes,
         "hist_pervar": hist_pervar,  # None if save_hist_pervar=False
     }
     return results
-
-
 
 
 if __name__ == '__main__':
