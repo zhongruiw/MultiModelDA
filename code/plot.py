@@ -2,6 +2,30 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 
+
+plt.rcParams.update({
+    'font.family':        'DejaVu Sans',
+    # 'mathtext.fontset':   'cm',
+
+    # --- Global font sizes ---
+    'font.size':          10,      # base size (ticks, fallback)
+    'axes.titlesize':     11,
+    'axes.labelsize':     10,
+    'xtick.labelsize':    9,
+    'ytick.labelsize':    9,
+    'legend.fontsize':    10,
+    'figure.titlesize':   14,
+
+    # --- Minor polish ---
+    'axes.linewidth':     0.8,
+    'xtick.direction':    'in',
+    'ytick.direction':    'in',
+    'xtick.major.width':  0.8,
+    'ytick.major.width':  0.8,
+    'xtick.minor.width':  0.5,
+    'ytick.minor.width':  0.5,
+})
+
 ################################################### Model #####################################################  
 def format_param(value):
     """Format a parameter value, using fractions for non-integer rationals."""
@@ -25,12 +49,12 @@ def plot_L63_regimes(t, z_truth, S, regimes, dt,
 
     Parameters
     ----------
-    t : ndarray, shape (N,) Time array.
-    z_truth : ndarray, shape (N,) Full z trajectory from the regime-switching model.
-    S : ndarray of int, shape (N,) Regime index at each time step.
+    t : ndarray, shape (N) Time array.
+    z_truth : ndarray, shape (N) Full z trajectory from the regime-switching model.
+    S : ndarray of int, shape (N) Regime index at each time step.
     regimes : list of dict, Each dict has keys 'sigma', 'beta', 'rho'.
     dt : float, Time step size.
-    z_indep_list : list of ndarray, each shape (N,) Independently simulated z trajectories, one per regime.
+    z_indep_list : list of ndarray, each shape (N) Independently simulated z trajectories, one per regime.
     t_display_max : float, Max time shown in time-series panels.
     max_lag_time : float, Max lag (in time units) for ACF.
     figsize : tuple, Figure size.
@@ -81,13 +105,12 @@ def plot_L63_regimes(t, z_truth, S, regimes, dt,
 
         ax_ts.plot(t[idx_display], z_ts[idx_display],
                    color='k', lw=0.5, rasterized=True)
-        ax_ts.set_ylabel('$z$', fontsize=11)
-        ax_ts.set_title(f'{panel_labels[row]}  {title}', fontsize=11, loc='left')
-        ax_ts.tick_params(labelsize=9)
+        ax_ts.set_ylabel('$z$')
+        ax_ts.set_title(f'{panel_labels[row]}  {title}', loc='left')
         if row < n_ts_rows:
             plt.setp(ax_ts.get_xticklabels(), visible=False)
         # else:
-        #     ax_ts.set_xlabel('Time', fontsize=11)
+        #     ax_ts.set_xlabel('Time')
 
         # --- PDF (Gaussian KDE + Gaussian fit) ---
         ax_pdf = fig.add_subplot(gs[row, 1])
@@ -99,22 +122,20 @@ def plot_L63_regimes(t, z_truth, S, regimes, dt,
         # ax_pdf.plot(norm.pdf(z_grid, mean, std), z_grid, 'k--', lw=0.9, label='Gaussian fit')
         ax_pdf.set_ylim(ax_ts.get_ylim())
         ax_pdf.set_yticklabels([])
-        ax_pdf.tick_params(labelsize=9)
         if row == 0:
-            ax_pdf.set_title('PDF', fontsize=10)
+            ax_pdf.set_title('PDF')
         if row == n_ts_rows - 1:
-            ax_pdf.set_xlabel('Density', fontsize=10)
+            ax_pdf.set_xlabel('Density')
 
         # --- ACF ---
         ax_acf = fig.add_subplot(gs[row, 2])
         ax_acf.plot(lag_axis, acf_vals, color='k', lw=.8)
         ax_acf.axhline(0, color='grey', lw=0.5, ls='--')
         ax_acf.set_xlim(0, max_lag_time)
-        ax_acf.tick_params(labelsize=9)
         if row == 0:
-            ax_acf.set_title('ACF', fontsize=11)
+            ax_acf.set_title('ACF')
         if row == n_ts_rows - 1:
-            ax_acf.set_xlabel('Lag', fontsize=11)
+            ax_acf.set_xlabel('Lag')
 
     # --- Panel (d): Regime sequence ---
     ax_regime = fig.add_subplot(gs[n_ts_rows, 0], sharex=ax_ts_first)
@@ -122,16 +143,15 @@ def plot_L63_regimes(t, z_truth, S, regimes, dt,
                    color='k', lw=0.6, drawstyle='steps-post')
     ax_regime.set_ylim(-0.15, n_regimes - 1 + 0.15)
     ax_regime.set_yticks(range(n_regimes))
-    ax_regime.set_yticklabels(regime_labels, fontsize=9)
-    ax_regime.set_xlabel('Time', fontsize=11)
-    ax_regime.set_title(f'{panel_labels[n_ts_rows]}  Regime sequence',fontsize=11, loc='left')
-    ax_regime.tick_params(labelsize=9)
+    ax_regime.set_yticklabels(regime_labels)
+    ax_regime.set_xlabel('Time')
+    ax_regime.set_title(f'{panel_labels[n_ts_rows]}  Regime sequence', loc='left')
     ax_ts_first.set_xlim(0, t_display_max)
 
     # # Global legend for Gaussian fit
     # fig.legend([Line2D([0], [0], color='k', ls='--', lw=0.9)],
     #            ['Gaussian fit'], loc='upper right',
-    #            bbox_to_anchor=(0.97, 0.97), fontsize=9, framealpha=0.8)
+    #            bbox_to_anchor=(0.97, 0.97), framealpha=0.8)
 
     if savefig is not None:
         plt.savefig(savefig, dpi=200, bbox_inches='tight')
@@ -201,7 +221,7 @@ def plot_ou_series_pdf_acf(dt, sel0, sel1, interv, xlim,
     Layout: 3 rows (variables), 3 columns (time series | PDF | ACF)
     
     Parameters:
-    - *_list: list of arrays of shape (T,)
+    - *_list: list of arrays of shape (T)
     - sel0, sel1: time index range
     - interv: interval for time series downsampling
     - xlim: x-axis limits for time plots
@@ -274,7 +294,7 @@ def plot_ou_series_pdf_acf(dt, sel0, sel1, interv, xlim,
 
     # Global legend
     fig.legend(legend_lines, legend_labels, loc='upper center', bbox_to_anchor=(0.5, 1.02),
-               ncol=len(legend_labels), fontsize=8)
+               ncol=len(legend_labels))
     plt.tight_layout(rect=[0, 0, 1, 0.97])
 
 def plot_baro_series_pdf_acf(dt, sel0, sel1, interv, xlim,
@@ -284,7 +304,7 @@ def plot_baro_series_pdf_acf(dt, sel0, sel1, interv, xlim,
     Layout: 3 rows (variables), 3 columns (time series | PDF | ACF)
     
     Parameters:
-    - *_list: list of arrays of shape (T,)
+    - *_list: list of arrays of shape (T)
     - sel0, sel1: time index range
     - interv: interval for time series downsampling
     - xlim: x-axis limits for time plots
@@ -355,7 +375,7 @@ def plot_baro_series_pdf_acf(dt, sel0, sel1, interv, xlim,
 
     # Global legend
     fig.legend(legend_lines, legend_labels, loc='upper center', bbox_to_anchor=(0.5, 1.02),
-               ncol=len(legend_labels), fontsize=8)
+               ncol=len(legend_labels))
     plt.tight_layout(rect=[0, 0, 1, 0.97])
     
 def plot_baro_series(dt, sel0, sel1, interv, xlim,
@@ -365,7 +385,7 @@ def plot_baro_series(dt, sel0, sel1, interv, xlim,
     Layout: 3 rows (variables), 3 columns (time series | PDF | ACF)
     
     Parameters:
-    - *_list: list of arrays of shape (T,)
+    - *_list: list of arrays of shape (T)
     - sel0, sel1: time index range
     - interv: interval for time series downsampling
     - xlim: x-axis limits for time plots
@@ -437,7 +457,7 @@ def plot_baro_series(dt, sel0, sel1, interv, xlim,
                         location='bottom', pad=0.22, fraction=0.02, aspect=30)
     # # Global legend
     # fig.legend(legend_lines, legend_labels, loc='upper center', bbox_to_anchor=(0.5, 1.02),
-    #            ncol=len(legend_labels), fontsize=8)
+    #            ncol=len(legend_labels))
     # plt.tight_layout(rect=[0, 0, 1, 0.97])
 
 def plot_baro_series_comparison(dt, sel0, sel1, interv, xlim,
@@ -447,8 +467,6 @@ def plot_baro_series_comparison(dt, sel0, sel1, interv, xlim,
     Plot time series and spatiotemporal fields v(x,t), T(x,t) for multiple methods.
     Layout: (3 time series) + (3 v fields) + (3 T fields)
     """
-    plt.rcParams['xtick.labelsize'] = 8
-    plt.rcParams['ytick.labelsize'] = 8
     n_methods = len(v_fields)
     total_rows = 3 + 2 * n_methods  # 3 time series + n_methods v fields + n_methods T fields
     time_axis = np.arange(sel0 * dt, sel1 * dt, interv * dt)
@@ -489,7 +507,6 @@ def plot_baro_series_comparison(dt, sel0, sel1, interv, xlim,
 
         ax.text(0.995, 0.95, labels[i],
                 transform=ax.transAxes,
-                fontsize=10,
                 fontweight='bold',
                 va='top', ha='right',
                 bbox=dict(facecolor='white', alpha=0.2, edgecolor='none'))
@@ -514,24 +531,22 @@ def plot_baro_series_comparison(dt, sel0, sel1, interv, xlim,
             ax.set_xlabel(r"$t$")
         ax.text(0.995, 0.95, labels[i],
         transform=ax.transAxes,
-        fontsize=10,
         fontweight='bold',
         va='top', ha='right',
         bbox=dict(facecolor='white', alpha=0.2, edgecolor='none'))
 
     # Add row labels using fig.text (global positioning)
-    fig.text(0.5, 1 - (3.245) / total_rows, r"$v(x,t)$", fontsize=12, fontweight='bold', va='center', ha='left')
-    fig.text(0.5, 1 - (5.754) / total_rows, r"$T(x,t)$", fontsize=12, fontweight='bold', va='center', ha='left')
+    fig.text(0.5, 1 - (3.245) / total_rows, r"$v(x,t)$", fontweight='bold', va='center', ha='left')
+    fig.text(0.5, 1 - (5.754) / total_rows, r"$T(x,t)$", fontweight='bold', va='center', ha='left')
 
-    fig.suptitle("Free Forecast using LSTM model(s) at lead time $t=1$", fontsize=12, y=0.96)
+    fig.suptitle("Free Forecast using LSTM model(s) at lead time $t=1$", y=0.96)
 
     # --- Global legend (placed just below title) ---
     fig.legend(
         legend_lines, legend_labels,
         loc='upper center',
         bbox_to_anchor=(0.5, 0.945),  # slightly below the title
-        ncol=len(labels),
-        fontsize=9
+        ncol=len(labels)
     )
     plt.tight_layout(rect=[0, 0.01, 1, 0.96], pad=1.3)  # leave space for title and legend
 
@@ -544,7 +559,7 @@ def plot_pdf_and_joint(var1, var2, var_names, ylims, log=True):
     and their joint PDF.
 
     Parameters:
-    - var1: ndarray of shape (N,), real
+    - var1: ndarray of shape (N), real
     - var2: same shape as var1
     - mode: spectral mode k to plot (default is 1)
     - log: whether to use log-scale on x-axis (default True)
@@ -707,8 +722,7 @@ def plot_l63_regimes(dt, sel0, sel1, interv, S,
 
     ax.set_ylim([-0.1, 1.1])
     ax.set_xlabel('$t$')
-    ax.set_title('FCM clustering with / without entropy-regularized feature selection', fontsize=12)
-    ax.tick_params(labelsize=10)
+    ax.set_title('FCM clustering with / without entropy-regularized feature selection')
     ax.set_xlim(xlim)
 
     # Global legend
@@ -717,9 +731,7 @@ def plot_l63_regimes(dt, sel0, sel1, interv, S,
         labels=labels,
         loc='upper center',
         bbox_to_anchor=(0.51, 0.12),
-        ncol=3,
-        fontsize=10,
-    )
+        ncol=3)
     fig.tight_layout(rect=[0, 0.03, 1, 0.96])  # leave enough bottom margin
 
 
@@ -756,8 +768,7 @@ def plot_l63_series(dt, sel0, sel1, interv,
         if obs is not None:
             ax.plot(time, obs[sel0:sel1:interv, i], 'g', linewidth=1.5, label='Obs')
 
-        ax.set_title(var_names[i], fontsize=12)
-        ax.tick_params(labelsize=10)
+        ax.set_title(var_names[i])
         ax.set_xlim(xlim)
 
         if i == 0:
@@ -772,7 +783,6 @@ def plot_l63_series(dt, sel0, sel1, interv,
         textstr = f'Corr = {corr:.3f}\nRMSE = {rmse:.3f}'
         ax.text(0.99, 0.94, textstr,
                 transform=ax.transAxes,
-                fontsize=9,
                 fontweight='bold',
                 verticalalignment='top',
                 horizontalalignment='right',
@@ -786,8 +796,7 @@ def plot_l63_series(dt, sel0, sel1, interv,
     lines.extend([l4, l5, l6])
     labels.extend(['True Regime', 'Prior Weight', 'Posterior Weight'])
     ax.set_ylim([-0.1, 1.1])
-    ax.set_title('Regime', fontsize=12)
-    ax.tick_params(labelsize=10)
+    ax.set_title('Regime')
     ax.set_xlim(xlim)
 
     # Global legend
@@ -796,9 +805,7 @@ def plot_l63_series(dt, sel0, sel1, interv,
         labels=labels,
         loc='upper center',
         bbox_to_anchor=(0.51, 0.04),
-        ncol=6,
-        fontsize=10,
-    )
+        ncol=6)
 
     # fig.tight_layout()  # Leave space for the global legend    
     fig.tight_layout(rect=[0, 0.03, 1, 0.95])  # leave enough bottom margin
@@ -834,8 +841,7 @@ def plot_ou_series(dt, sel0, sel1, interv,
         if obs is not None:
             ax.plot(time, obs[sel0:sel1:interv, i], 'g', linewidth=1.5, label='Obs')
 
-        ax.set_title(var_names[i], fontsize=12)
-        ax.tick_params(labelsize=10)
+        ax.set_title(var_names[i])
         ax.set_xlim(xlim)
 
         if i == 0:
@@ -851,7 +857,6 @@ def plot_ou_series(dt, sel0, sel1, interv,
             textstr = f'Corr = {corr:.3f}\nRMSE = {rmse:.3f}'
             ax.text(0.99, 0.94, textstr,
                     transform=ax.transAxes,
-                    fontsize=9,
                     fontweight='bold',
                     verticalalignment='top',
                     horizontalalignment='right',
@@ -873,8 +878,7 @@ def plot_ou_series(dt, sel0, sel1, interv,
         lines.extend([l6])
         labels.extend(['Posterior Weight'])
     ax.set_ylim([-0.1, 1.1])
-    ax.set_title('Regime', fontsize=12)
-    ax.tick_params(labelsize=10)
+    ax.set_title('Regime')
     ax.set_xlim(xlim)
 
     # Global legend
@@ -883,9 +887,7 @@ def plot_ou_series(dt, sel0, sel1, interv,
         labels=labels,
         loc='upper center',
         bbox_to_anchor=(0.51, 0.04),
-        ncol=6,
-        fontsize=10,
-    )
+        ncol=6)
 
     # fig.tight_layout()  # Leave space for the global legend    
     fig.tight_layout(rect=[0, 0.03, 1, 0.95])  # leave enough bottom margin
@@ -922,8 +924,7 @@ def plot_ou_series_comparison(dt, sel0, sel1, interv, truth_vars,
         if obs is not None:
             ax.plot(time, obs[sel0:sel1:interv, i], 'g', linewidth=1.5, label='Obs')
 
-        ax.set_title(var_names[i], fontsize=12)
-        ax.tick_params(labelsize=10)
+        ax.set_title(var_names[i])
         ax.set_xlim(xlim)
 
         if i == 0:
@@ -939,7 +940,6 @@ def plot_ou_series_comparison(dt, sel0, sel1, interv, truth_vars,
             textstr = f'Corr = {corr:.3f}\nRMSE = {rmse:.3f}'
             ax.text(0.99, 0.94, textstr,
                     transform=ax.transAxes,
-                    fontsize=9,
                     fontweight='bold',
                     verticalalignment='top',
                     horizontalalignment='right',
@@ -962,8 +962,7 @@ def plot_ou_series_comparison(dt, sel0, sel1, interv, truth_vars,
         lines.extend([l6])
         labels.extend(['Posterior Weight'])
     ax.set_ylim([-0.1, 1.1])
-    ax.set_title(var_names[-1], fontsize=12)
-    ax.tick_params(labelsize=10)
+    ax.set_title(var_names[-1])
     ax.set_xlim(xlim)
 
     # Global legend
@@ -972,9 +971,7 @@ def plot_ou_series_comparison(dt, sel0, sel1, interv, truth_vars,
         labels=labels,
         loc='upper center',
         bbox_to_anchor=(0.51, 0.04),
-        ncol=6,
-        fontsize=10,
-    )
+        ncol=6)
 
     # fig.tight_layout()  # Leave space for the global legend    
     fig.tight_layout(rect=[0, 0.03, 1, 0.95])  # leave enough bottom margin
@@ -1009,8 +1006,7 @@ def plot_topobaro_series(dt, sel0, sel1, interv,
         if obs is not None:
             ax.plot(time, obs[sel0:sel1:interv, i], 'g', linewidth=1.5, label='Obs')
 
-        ax.set_title(var_names[i], fontsize=12)
-        ax.tick_params(labelsize=10)
+        ax.set_title(var_names[i])
         ax.set_xlim(xlim)
 
         if i == 0:
@@ -1026,7 +1022,6 @@ def plot_topobaro_series(dt, sel0, sel1, interv,
         textstr = f'Corr = {corr:.3f}\nRMSE = {rmse:.3f}'
         ax.text(0.99, 0.94, textstr,
                 transform=ax.transAxes,
-                fontsize=9,
                 fontweight='bold',
                 verticalalignment='top',
                 horizontalalignment='right',
@@ -1048,8 +1043,7 @@ def plot_topobaro_series(dt, sel0, sel1, interv,
         lines.extend([l6])
         labels.extend(['Posterior Weight'])
     ax.set_ylim([-0.1, 1.1])
-    ax.set_title('Regime', fontsize=12)
-    ax.tick_params(labelsize=10)
+    ax.set_title('Regime')
     ax.set_xlim(xlim)
 
     # Global legend
@@ -1058,9 +1052,7 @@ def plot_topobaro_series(dt, sel0, sel1, interv,
         labels=labels,
         loc='upper center',
         bbox_to_anchor=(0.51, 0.04),
-        ncol=6,
-        fontsize=10,
-    )
+        ncol=6)
 
     # fig.tight_layout()  # Leave space for the global legend    
     fig.tight_layout(rect=[0, 0.03, 1, 0.95])  # leave enough bottom margin
@@ -1075,14 +1067,13 @@ def plot_topobaro_series_comparison(dt, sel0, sel1, interv,
     fig, axes = plt.subplots(4, 1, figsize=(10, 8), sharex=True, gridspec_kw={'height_ratios': [1, 1, 1, 1]})
     lines, labels = [], []
     if title is  not None:
-        axes[0].set_title(title, fontsize=14)
+        axes[0].set_title(title)
     
     # Time series plots 
     for i in range(3):
         ax = axes[i]
         l_truth, = ax.plot(time, truth_vars[i][sel0:sel1:interv], 'k', linewidth=line_width)
-        ax.set_ylabel(var_names[i], fontsize=12)
-        ax.tick_params(labelsize=10)
+        ax.set_ylabel(var_names[i])
         ax.set_xlim(xlim)
         if i == 0:
             lines.append(l_truth)
@@ -1120,7 +1111,6 @@ def plot_topobaro_series_comparison(dt, sel0, sel1, interv,
             0.99, 0.94,
             metrics_box_text,
             transform=ax.transAxes,
-            fontsize=9,
             fontweight='bold',
             verticalalignment='top',
             horizontalalignment='right',
@@ -1136,7 +1126,6 @@ def plot_topobaro_series_comparison(dt, sel0, sel1, interv,
             0.82, 0.94,  # adjust x-spacing
             'Corr:',
             transform=ax.transAxes,
-            fontsize=9,
             fontweight='bold',
             verticalalignment='top',
             horizontalalignment='right',
@@ -1146,7 +1135,6 @@ def plot_topobaro_series_comparison(dt, sel0, sel1, interv,
             0.83, 0.94 - line_spacing_y,
             'RMSE:',
             transform=ax.transAxes,
-            fontsize=9,
             fontweight='bold',
             verticalalignment='top',
             horizontalalignment='right',
@@ -1157,7 +1145,6 @@ def plot_topobaro_series_comparison(dt, sel0, sel1, interv,
                 1.05 - (len(means)-j) * line_spacing_x, 0.94,  # adjust x-spacing
                 corrs[j],
                 transform=ax.transAxes,
-                fontsize=9,
                 fontweight='bold',
                 verticalalignment='top',
                 horizontalalignment='right',
@@ -1167,7 +1154,6 @@ def plot_topobaro_series_comparison(dt, sel0, sel1, interv,
                 1.05 - (len(means)-j) * line_spacing_x, 0.94 - line_spacing_y,
                 rmses[j],
                 transform=ax.transAxes,
-                fontsize=9,
                 fontweight='bold',
                 verticalalignment='top',
                 horizontalalignment='right',
@@ -1190,9 +1176,8 @@ def plot_topobaro_series_comparison(dt, sel0, sel1, interv,
         labels.append('Posterior Weight')
 
     ax.set_ylim([-0.1, 1.1])
-    ax.set_ylabel('weight', fontsize=12)
-    ax.set_xlabel('t', fontsize=12)
-    ax.tick_params(labelsize=10)
+    ax.set_ylabel('weight')
+    ax.set_xlabel('t')
     ax.set_xlim(xlim)
 
     # Global legend
@@ -1201,9 +1186,7 @@ def plot_topobaro_series_comparison(dt, sel0, sel1, interv,
         labels=labels,
         loc='upper center',
         bbox_to_anchor=(0.51, 0.04),
-        ncol=6,
-        fontsize=10,
-    )
+        ncol=6)
     
     fig.tight_layout(rect=[0, 0.03, 1, 0.97])
 
@@ -1225,7 +1208,7 @@ def plot_topobaro_fields_comparison(dt, sel0, sel1, v_fields, T_fields, method_l
                            extent=time_extent + x_extent,
                            vmin=-vlim, vmax=vlim,
                            cmap='seismic')
-        ax_v.set_ylabel(r"$x$", fontsize=10)
+        ax_v.set_ylabel(r"$x$")
 
         ax_T = axes[i, 1]
         im_T = ax_T.imshow(T_fields[i][sel0:sel1].T,
@@ -1239,12 +1222,11 @@ def plot_topobaro_fields_comparison(dt, sel0, sel1, v_fields, T_fields, method_l
             ax_T.set_xlabel(r"$t$")
         ax_T.text(0.99, 0.95, method_labels[i],
           transform=ax_T.transAxes,
-          fontsize=10,
           va='top',
           ha='right',
           bbox=dict(facecolor='white', alpha=0.1, edgecolor='none'))
-    axes[0, 0].set_title(r"$v(x,t)$", fontsize=11)
-    axes[0, 1].set_title(r"$T(x,t)$", fontsize=11)
+    axes[0, 0].set_title(r"$v(x,t)$")
+    axes[0, 1].set_title(r"$T(x,t)$")
     plt.tight_layout(rect=[0, 0.01, 1, 1])
     cbar = fig.colorbar(im_T, ax=axes, location='bottom', pad=0.1, fraction=0.015, aspect=40)
 
@@ -1285,7 +1267,7 @@ def plot_gmm_pdf_3vars(means_list, stds_list, weights_list, x_ranges=None, num_p
             ax.axvline(mu, linestyle='--', color='k', alpha=0.5, label=f'$\mu_{j}={mu:.2f}$')
         ax.set_xlabel(f"{var_names[i]}")
         # ax.set_title(f"GMM PDF of {var_names[i]}")
-        ax.legend(fontsize=8)
+        ax.legend()
 
     axes[0].set_ylabel("Density")
     plt.tight_layout()
@@ -1355,15 +1337,13 @@ def plot_gmm_pdf_3vars_multi(
         ax.set_xlabel(f"{var_names[i]}")
 
     axes[0].set_ylabel("Density")
-    fig.suptitle(title, fontsize=14)
+    fig.suptitle(title)
     fig.legend(
         handles=legend_lines,
         labels=labels,
         loc='upper center',
         bbox_to_anchor=(0.5, 0.12),  # adjust for layout
-        ncol=K+1,
-        fontsize=10
-    )
+        ncol=K+1)
 
     plt.tight_layout(rect=[0, 0.06, 1, 1])  # leave space for legend
     
@@ -1396,8 +1376,7 @@ def plot_series(dt, sel0, sel1, interv, truth_vars, mean=None, spread=None, prio
         if obs is not None:
             ax.plot(time, obs[sel0:sel1:interv, i], 'g', linewidth=1.5, label='Obs')
 
-        ax.set_title(var_names[i], fontsize=12)
-        ax.tick_params(labelsize=10)
+        ax.set_title(var_names[i])
         ax.set_xlim(xlim)
 
         if i == 0:
@@ -1412,7 +1391,6 @@ def plot_series(dt, sel0, sel1, interv, truth_vars, mean=None, spread=None, prio
         textstr = f'Corr = {corr:.3f}\nRMSE = {rmse:.3f}'
         ax.text(0.99, 0.94, textstr,
                 transform=ax.transAxes,
-                fontsize=9,
                 fontweight='bold',
                 verticalalignment='top',
                 horizontalalignment='right',
@@ -1434,8 +1412,7 @@ def plot_series(dt, sel0, sel1, interv, truth_vars, mean=None, spread=None, prio
         lines.extend([l6])
         labels.extend(['Posterior Weight'])
     ax.set_ylim([-0.1, 1.1])
-    ax.set_title('Regime', fontsize=12)
-    ax.tick_params(labelsize=10)
+    ax.set_title('Regime')
     ax.set_xlim(xlim)
 
     # Global legend
@@ -1444,9 +1421,7 @@ def plot_series(dt, sel0, sel1, interv, truth_vars, mean=None, spread=None, prio
         labels=labels,
         loc='upper center',
         bbox_to_anchor=(0.51, 0.04),
-        ncol=6,
-        fontsize=10,
-    )
+        ncol=6)
     fig.tight_layout(rect=[0, 0.03, 1, 0.95])  # leave enough bottom margin
 
 
@@ -1464,11 +1439,11 @@ def plot_all_histograms_univar(hist_data, variables=['x', 'y', 'z'], figsize=(12
             width = (bin_edges[1] - bin_edges[0]) * 0.4
             ax.bar(bin_centers - width/2, p_hat, width=width, color='k', label='Truth', alpha=0.7)
             ax.bar(bin_centers + width/2, q_hat, width=width, color='r', label='Model', alpha=0.7)
-            ax.set_title(f'Regime {regime_id}, Model {model_id}', fontsize=10)
+            ax.set_title(f'Regime {regime_id}, Model {model_id}')
             if i == 0:
                 ax.set_ylabel(var)
             if i == 0 and j == 0:
-                ax.legend(fontsize=6.5)
+                ax.legend()
     fig.tight_layout()
     return fig
 
@@ -1614,16 +1589,16 @@ def plot_all_histograms_univar_from_hist_pervar(hist_pervar, var_indices, model_
                         model_label = f"Model {model_id}" 
                 ax.bar(bin_centers + offset,q_hat_m,width=model_bar_width,color=color,alpha=0.7,label=model_label)
             if row == 0:
-                ax.set_title(f'Regime {regime_id}', fontsize=9)
+                ax.set_title(f'Regime {regime_id}')
             if col == 0:
-                ax.set_ylabel(var_labels[row], fontsize=9)
+                ax.set_ylabel(var_labels[row])
             if legend_ax is None:
                 legend_ax = ax
     fig.tight_layout(rect=[0, 0.08, 1, 1])
     if legend_ax is not None:
         handles, labels = legend_ax.get_legend_handles_labels()
         if handles:
-            fig.legend(handles, labels, loc='lower center', bbox_to_anchor=(0.5, 0.04), ncol=len(labels), fontsize=8)
+            fig.legend(handles, labels, loc='lower center', bbox_to_anchor=(0.5, 0.04), ncol=len(labels))
 
     return fig
 
@@ -1681,7 +1656,7 @@ def plot_eofs(eofs, evr, modes=(1,2,3), vmin=None, vmax=None):
         ax.set_title("")
         ax.text(
             0.02, 0.02, f"EOF {m} ({evr.sel(mode=m).item()*100:.1f}% var)",
-            transform=ax.transAxes, fontsize=10,
+            transform=ax.transAxes,
             color="black", ha="left", va="bottom",
             bbox=dict(facecolor="white", alpha=0.5, edgecolor="none", pad=2)
         )
@@ -1692,7 +1667,7 @@ def plot_eofs(eofs, evr, modes=(1,2,3), vmin=None, vmax=None):
         ax.set_ylabel("Latitude")
 
     cbar = fig.colorbar(im, ax=axs, orientation="vertical", aspect=50, shrink=0.8, fraction=0.1, pad=0.02)
-    fig.suptitle("EOFs", fontsize=12)
+    fig.suptitle("EOFs")
 
 def plot_pcs(pcs, modes=(1,2,3)):
     fig, ax = plt.subplots(figsize=(8, 2.5))
@@ -1705,9 +1680,9 @@ def plot_pcs(pcs, modes=(1,2,3)):
     plt.tight_layout()
 
 def plot_nino34_with_regimes(
-    nino34,                   # np.ndarray, shape (Nt,)
-    labels,                   # np.ndarray or list, shape (Nt,), ints like 0..K-1 (or -1 for noise)
-    time=None,                # None, np.ndarray shape (Nt,), or pandas.DatetimeIndex
+    nino34,                   # np.ndarray, shape (Nt)
+    labels,                   # np.ndarray or list, shape (Nt), ints like 0..K-1 (or -1 for noise)
+    time=None,                # None, np.ndarray shape (Nt), or pandas.DatetimeIndex
     regime_names=None,        # list of names per regime id; len==K
     colors=None,              # list of color strings per regime id; len==K
     rolling=None,             # e.g., 3 or 5 for moving avg window (optional)
@@ -1763,14 +1738,13 @@ def plot_nino34_with_regimes(
         if l not in seen:
             seen[l] = True
             new_h.append(h); new_l.append(l)
-    ax.legend(new_h, new_l, ncol=2, fontsize=9)
+    ax.legend(new_h, new_l, ncol=2)
     # Legend outside bottom
     ax.legend(
         new_h, new_l,
         loc="upper center",
         bbox_to_anchor=(0.5, -0.18),
-        ncol=len(new_l),
-        fontsize=9
+        ncol=len(new_l)
     )
 
     plt.tight_layout()
@@ -1818,22 +1792,110 @@ def plot_regime_means(mean_maps, freq, regimes=None, cmap="RdBu_r"):
         frq = frq_map.get(r, 0.0) * 100.0
         ax.text(
             0.02, 0.02, f"Regime {reg} ({frq:.1f}%)",
-            transform=ax.transAxes, fontsize=10,
+            transform=ax.transAxes,
             color="black", ha="left", va="bottom",
             bbox=dict(facecolor="white", alpha=0.5, edgecolor="none", pad=2)
         )
 
     cbar = fig.colorbar(im, ax=axs, orientation="vertical", aspect=50, shrink=0.8, fraction=0.1, pad=0.02)
-    fig.suptitle("Mean SSTA by regime", fontsize=12)
+    fig.suptitle("Mean SSTA by regime")
+
+def plot_hovmoller_with_regime(
+    sst_eq_1d, # xarray.DataArray with dims ("time","lon")
+    time_vals, # array-like datetime
+    cluster_2d, # ndarray 2D regime map
+    cluster_labels, # array-like regime labels
+    cmap_regimes, # matplotlib colormap
+    title="SSTA",
+    vmin=-1,
+    vmax=1,
+):
+    from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+    import matplotlib.dates as mdates
+
+    fig = plt.figure(figsize=(2.0, 6.5))
+    gs = fig.add_gridspec(
+        nrows=1, ncols=2,
+        width_ratios=[4, 1],
+        wspace=0.15
+    )
+    ax1 = fig.add_subplot(gs[0, 0])
+    ax2 = fig.add_subplot(gs[0, 1], sharey=ax1)
+
+    # ===== Hovmöller plot =====
+    sst_eq_1d = sst_eq_1d.transpose("time", "lon")
+    pcm = ax1.pcolormesh(
+        sst_eq_1d["lon"].values,
+        time_vals,
+        sst_eq_1d.values,
+        cmap="RdBu_r",
+        vmin=vmin,
+        vmax=vmax,
+        shading="auto",
+    )
+    ax1.set_xlabel("Lon (°E)")
+    ax1.set_ylabel("year")
+    ax1.set_title(title)
+    ax1.yaxis.set_major_locator(mdates.YearLocator(5))
+    ax1.yaxis.set_major_formatter(mdates.DateFormatter("%Y"))
+    ax1.set_xticks([130, 180, 230, 280])
+    ax1.set_xlim(130, 280)
+
+    # ---- colorbar (inset) ----
+    cax1 = inset_axes(
+        ax1,
+        width="85%",
+        height="1.5%",
+        loc="lower center",
+        bbox_to_anchor=(0, -0.12, 1, 1),
+        bbox_transform=ax1.transAxes,
+        borderpad=0,
+    )
+    fig.colorbar(pcm, cax=cax1, orientation="horizontal")
+
+    # ===== Regime plot =====
+    ax2.imshow(
+        cluster_2d,
+        aspect="auto",
+        cmap=cmap_regimes,
+        origin="lower",
+        extent=[0,1,mdates.date2num(time_vals[0]),mdates.date2num(time_vals[-1])],
+    )
+    ax2.set_xticks([])
+    ax2.set_title("regime")
+    ax2.tick_params(labelleft=False)
+
+    # ---- legend ----
+    unique_clusters = np.unique(cluster_labels)
+    handles = [
+        plt.Line2D([0],[0],marker="s",linestyle="",markersize=6,
+            markerfacecolor=cmap_regimes(i),markeredgecolor="none")
+        for i in unique_clusters
+    ]
+    ax2.legend(
+        handles,
+        [f"{i}" for i in unique_clusters],
+        loc="lower center",
+        bbox_to_anchor=(0.6, -0.15),
+        ncol=1,
+        frameon=False,
+        columnspacing=0.6,
+        handletextpad=0.3,
+        borderpad=0.2,
+        labelspacing=0.2,
+        handlelength=0.8,        
+    )
+
+    fig.subplots_adjust(bottom=0.14,top=0.96,left=0.23,right=0.9)
+    return fig, (ax1, ax2)
 
 def hovmoller_compare(
     data_by_col,    # dict: col_name -> array (T, V, Nx)
-    time_by_col,    # dict: col_name -> array (T,)
-    lon,            # 1D array (Nx,)
+    time_by_col,    # dict: col_name -> array (T)
+    lon,            # 1D array (Nx)
     var_names,      # list of variable names (rows)
     vlims=None,     # None or list of (vmin, vmax) per variable
-    yr_locator=1, 
-):
+    yr_locator=1):
     import matplotlib.dates as mdates
     col_order = list(data_by_col.keys())
     n_cols = len(col_order)
@@ -1846,7 +1908,7 @@ def hovmoller_compare(
             vmin=vmin, vmax=vmax
         )
         if title:
-            ax.set_title(title, fontsize=9, pad=4)
+            ax.set_title(title, pad=4)
         ax.set_xlim(Xlon.min(), Xlon.max())
         ax.set_xticks([130, 180, 230, 280])  # tweak as needed
         ax.yaxis.set_major_locator(mdates.YearLocator(yr_locator))
@@ -1861,27 +1923,27 @@ def hovmoller_compare(
         vmin, vmax = vlims[v_idx]
         for c_idx, col_name in enumerate(col_order):
             arr  = data_by_col[col_name]     # (T, V, Nx)
-            time = time_by_col[col_name]     # (T,)
+            time = time_by_col[col_name]     # (T)
             C    = arr[:, v_idx, :]          # (T, Nx)
             ax = axes[v_idx, c_idx]
             title = col_name if v_idx == 0 else None
             pcm = hovmoller(ax, lon, time, C, vmin, vmax, title=title)
             pcm_row[v_idx] = pcm
             if c_idx == 0:
-                ax.set_ylabel("Year")
+                ax.set_ylabel("year")
             else:
                 ax.set_ylabel("")
             if v_idx == n_vars - 1:
-                ax.set_xlabel("Lon (°E)")
+                ax.set_xlabel('Lon (°E)')
     for v_idx, vname in enumerate(var_names):
         last_ax = axes[v_idx, -1]
         cb = fig.colorbar(pcm_row[v_idx], ax=last_ax, fraction=0.08, pad=0.02, aspect=30)
-        cb.set_label(vname.upper())
+        cb.set_label(vname)
         
     return fig
 
 def plot_enso_da_series_and_weights(
-    time,                  # 1D array of datetimes, shape (T,)
+    time,                  # 1D array of datetimes, shape (T)
     series_list,           # list of arrays, each (T, n_vars); series_list[0] = "truth"
     spread_list=None,      # list of arrays or None, same length as series_list, each (T, n_vars)
     series_labels=None,    # list of str, len = len(series_list) (e.g. ["Truth", "Single", "StdMM", "GMMM"])
@@ -1895,8 +1957,7 @@ def plot_enso_da_series_and_weights(
     line_width=1.5,
     row_height=1.5,
     title=None,
-    yr_locator=2,
-):
+    yr_locator=2):
     import matplotlib.dates as mdates
     time = np.asarray(time)
     T = time.shape[0]
@@ -1921,7 +1982,7 @@ def plot_enso_da_series_and_weights(
         axes = np.array([axes])
     lines, labels = [], []
     if title is not None:
-        axes[0].set_title(title, fontsize=14)
+        axes[0].set_title(title)
 
     # -------- helper: metric box (Corr/RMSE) --------
     def _add_corr_rmse_box(ax, truth_arr, mean_list_arr, colors_list, warmup):
@@ -1997,8 +2058,7 @@ def plot_enso_da_series_and_weights(
     # --------------- Signal rows -----------------
     for v_idx in range(n_vars):
         ax = axes[v_idx]
-        ax.set_ylabel(var_names[v_idx], fontsize=12)
-        ax.tick_params(labelsize=9)
+        ax.set_ylabel(var_names[v_idx])
         for mean_series, spread_series, label, color in zip(series_list, spread_list, series_labels, colors):
             mean = mean_series[t_idx, v_idx]
             l_mean, = ax.plot(time_sel, mean, color=color, linewidth=line_width)
@@ -2029,9 +2089,9 @@ def plot_enso_da_series_and_weights(
             extent=[t0, t1, -0.5, K - 0.5]
         )
         ax.set_yticks(np.arange(K))
-        ax.set_yticklabels(row_labels, fontsize=9)
+        ax.set_yticklabels(row_labels)
         if ylabel is not None:
-            ax.set_ylabel(ylabel, fontsize=12)
+            ax.set_ylabel(ylabel)
         ax.xaxis_date()
         ax.xaxis.set_major_locator(mdates.YearLocator(yr_locator))
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
@@ -2054,9 +2114,9 @@ def plot_enso_da_series_and_weights(
         )
         im_for_cbar = im_w
         row_idx += 1
-    axes[-1].set_xlabel("Time", fontsize=12)
+    axes[-1].set_xlabel("Time")
 
-    fig.legend(handles=lines,labels=labels,loc='upper center',bbox_to_anchor=(0.52, 0.99),ncol=min(6, len(labels)),fontsize=10,)
+    fig.legend(handles=lines,labels=labels,loc='upper center',bbox_to_anchor=(0.52, 0.99),ncol=min(6, len(labels)))
     fig.subplots_adjust(left=0.07,right=0.98,bottom=0.08,top=0.96,hspace=0.1)
     if im_for_cbar is not None:
         cax = fig.add_axes([0.37, 0.03, 0.3, 0.008])
