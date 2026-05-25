@@ -1,115 +1,4 @@
 import numpy as np
-# from L63_noisy import L63RegimeModel
-
-# def compute_histogram(data, bins):
-#     hist, _ = np.histogramdd(data, bins=bins, density=False) 
-#     return hist / np.sum(hist)
-
-# def kl_divergence(p, q):
-#     eps = 1e-12
-#     p = np.clip(p, eps, 1.0)
-#     q = np.clip(q, eps, 1.0)
-#     return np.sum(p * np.log(p / q))
-
-# def evaluate_model_error(A_data, A_model, bins=10):
-#     """
-#     Evaluate model error (KL divergence) in regime `k`.
-    
-#     Parameters:
-#     - A_data: true values, shape (T, D)
-#     - A_model: model predictions, shape (T, D)
-#     - bins: number of bins per dimension (int or list of length D)
-    
-#     Returns:
-#     - kl: scalar KL divergence
-#     - p_hat, q_hat: joint histograms
-#     - edges: bin edges
-#     """
-
-#     D = A_data.shape[1]
-#     combined = np.vstack([A_data, A_model])
-#     if isinstance(bins, int):
-#         bins = [bins] * D
-#     edges = [np.linspace(combined[:, d].min(), combined[:, d].max(), bins[d] + 1) for d in range(D)] # adaptive bins that functions as standardizing data
-
-#     p_hat = compute_histogram(A_data, bins=edges)
-#     q_hat = compute_histogram(A_model, bins=edges)
-
-#     kl = kl_divergence(p_hat, q_hat)
-#     return kl, p_hat, q_hat, edges
-
-# def evaluate_model(Model, params, S_obs, truth, Nt, N_gap, dt, lead_time, n_models, n_regimes, rho=2, verbose=False):
-#     """
-#     Compute model weights by evaluating KL-based scores for each model and regime.
-
-#     Parameters:
-#     - Model: model class (not instantiated)
-#     - params: tuple (models, sigma_x, sigma_y, sigma_z)
-#     - S_obs: array of regime IDs (length Nt)
-#     - truth: array of ground truth state (Nt, 3)
-#     - Nt: total number of time steps
-#     - N_gap: number of integration steps per forecast
-#     - dt: time step size
-#     - lead_time: assimilation step offset
-#     - n_models: number of models
-#     - n_regimes: number of regimes
-#     - rho: penalty factor in model score
-#     - verbose: print KL and score for each regime-model pair
-
-#     Returns:
-#     - weight_matrix: shape (n_models, n_regimes), normalized model scores
-#     - score_matrix: raw (unnormalized) scores
-#     - models: the model parameter list (as passed)
-#     """
-#     models, sigma_x, sigma_y, sigma_z = params
-#     holding_parameters = np.array([0.1, 0.1, 0.1]) # # arbitrary values since transition is forbidden from the routing matrix
-#     score_matrix = np.zeros((n_models, n_regimes))
-#     hist_data = {
-#     'x': [],
-#     'y': [],
-#     'z': [],
-#     'xyz': []
-#     }
-
-#     for regime_id in range(n_regimes):
-#         idx = np.where(S_obs == regime_id)[0] + lead_time
-#         idx = idx[idx < Nt]  # avoid index out of bounds
-#         X0 = truth[idx-lead_time]
-#         A_true = truth[idx]
-
-#         for model_id in range(n_models):    
-#             routing_matrix = np.zeros((n_models, n_models))
-#             routing_matrix[:, model_id] = 1
-#             model = Model(models, routing_matrix, holding_parameters, sigma_x, sigma_y, sigma_z)
-#             A_pred = np.zeros_like(A_true)
-#             Nt_pred = len(idx)
-#             for i in range(Nt_pred):
-#                 x1, y1, z1, _ = model.forecast(N_gap, dt, X0[i,0], X0[i,1], X0[i,2], model_id)
-#                 A_pred[i,0] = x1[-1]
-#                 A_pred[i,1] = y1[-1]
-#                 A_pred[i,2] = z1[-1]
-                
-#             kl_x1, p_x1, q_x1, bins_x1 = evaluate_model_error(A_data=A_true[:,0][:,None], A_model=A_pred[:,0][:,None], bins=30)
-#             kl_y1, p_y1, q_y1, bins_y1 = evaluate_model_error(A_data=A_true[:,1][:,None], A_model=A_pred[:,1][:,None], bins=30)
-#             kl_z1, p_z1, q_z1, bins_z1 = evaluate_model_error(A_data=A_true[:,2][:,None], A_model=A_pred[:,2][:,None], bins=30)
-#             kl_xyz1, p_xyz1, q_xyz1, edges_xyz1 = evaluate_model_error(A_data=A_true, A_model=A_pred, bins=10)
-#             model_score = np.exp(-rho*kl_xyz1) # the constant parameter controls penalty to model errors
-#             score_matrix[model_id, regime_id] = model_score
-
-#             hist_data['x'].append((p_x1, q_x1, bins_x1, regime_id, model_id))
-#             hist_data['y'].append((p_y1, q_y1, bins_y1, regime_id, model_id))
-#             hist_data['z'].append((p_z1, q_z1, bins_z1, regime_id, model_id))
-#             hist_data['xyz'].append((p_xyz1, q_xyz1, edges_xyz1, regime_id, model_id))
-
-#             if verbose:
-#                 print(f"KL divergence for x in regime {regime_id:d}, model {model_id:d}: {kl_x1:.4f}")
-#                 print(f"KL divergence for y in regime {regime_id:d}, model {model_id:d}: {kl_y1:.4f}")
-#                 print(f"KL divergence for z in regime {regime_id:d}, model {model_id:d}: {kl_z1:.4f}")
-#                 print(f"KL divergence for (x,y,z) in regime {regime_id:d}, model {model_id:d}: {kl_xyz1:.4f}")
-#                 print(f"model score in regime {regime_id:d}, model {model_id:d}: {model_score:.4e}")
-#     weight_matrix = score_matrix / np.sum(score_matrix, axis=0)
-
-#     return weight_matrix, score_matrix, models, hist_data
 
 # -------------------------
 # Helpers
@@ -135,7 +24,30 @@ def _univariate_kl(x_true, x_pred, bins=30, return_hist=False):
         return kl, P, Q, edges
     return kl
 
-def _joint_kl(A_true, A_pred, bins=10, max_dim=3):
+def _joint_kl(A_true, A_pred, bins=10, max_dim=3, eps=1e-12):
+    A_true = np.asarray(A_true)
+    A_pred = np.asarray(A_pred)
+    N_true, D = A_true.shape
+    D_use = min(D, max_dim)
+
+    X = A_true[:, :D_use]
+    Y = A_pred[:, :D_use]
+    Z = np.vstack([X, Y])
+
+    edges = [np.linspace(Z[:, d].min(), Z[:, d].max(), bins + 1) for d in range(D_use)]
+    H_true, _ = np.histogramdd(X, bins=edges)
+    H_pred, _ = np.histogramdd(Y, bins=edges)
+
+    P = H_true / np.sum(H_true)
+    Q = H_pred / np.sum(H_pred)
+
+    # epsilon smoothing exactly like your old implementation
+    P = np.clip(P, eps, 1.0)
+    Q = np.clip(Q, eps, 1.0)
+    return np.sum(P * (np.log(P) - np.log(Q)))
+
+
+def _joint_kl(A_true, A_pred, bins=10, max_dim=3, eps=1e-12):
     """
     Estimate KL(p || q) between truth and model using a joint histogram (up to `max_dim` dimensions).
 
@@ -154,8 +66,13 @@ def _joint_kl(A_true, A_pred, bins=10, max_dim=3):
     H_pred, _ = np.histogramdd(Y, bins=edges)
     P = H_true / np.sum(H_true)
     Q = H_pred / np.sum(H_pred)
-    mask = (P > 0) & (Q > 0)  # support restriction on KL(P || Q)
-    kl = np.sum(P[mask] * (np.log(P[mask]) - np.log(Q[mask])))
+    # # support restriction on KL(P || Q)
+    # mask = (P > 0) & (Q > 0)  
+    # kl = np.sum(P[mask] * (np.log(P[mask]) - np.log(Q[mask])))
+    # punish missing support
+    P = np.clip(P, eps, 1.0)
+    Q = np.clip(Q, eps, 1.0)
+    kl = np.sum(P * (np.log(P) - np.log(Q)))
     return kl
 
 def _energy_distance(A_true, A_pred):
@@ -253,7 +170,10 @@ def evaluate_model(models, S_obs, truth, N_gap, dt, lead_time, n_regimes,
         idx_init   = idx_init[mask_valid]
         idx_target = idx_target[mask_valid]
         # ensure enough history for seq_len
-        mask_hist = (idx_init - (seq_len - 1)) >= 0
+        if seq_len == None:
+            mask_hist = idx_init >= 0
+        elif seq_len >= 1:
+            mask_hist = (idx_init - (seq_len - 1)) >= 0
         idx_init   = idx_init[mask_hist]
         idx_target = idx_target[mask_hist]
         if idx_init.size == 0:
@@ -266,10 +186,10 @@ def evaluate_model(models, S_obs, truth, N_gap, dt, lead_time, n_regimes,
             A_pred_flat = np.zeros_like(A_true_flat)
             for i in range(N_pred):
                 t0 = idx_init[i]
-                if seq_len >= 1:
-                    x0 = truth[t0 - (seq_len - 1): t0 + 1]  # (seq_len, *trailing_shape)
-                elif seq_len == None:
+                if seq_len == None:
                     x0 = truth[t0]                          # (*trailing_shape,)
+                elif seq_len >= 1:
+                    x0 = truth[t0 - (seq_len - 1): t0 + 1]  # (seq_len, *trailing_shape)
                 out = model.forecast(N_gap, dt, x0)         # (N_gap+1, *trailing_shape)
                 A_pred_flat[i] = out[-1].reshape(n_vars)
             
@@ -352,67 +272,104 @@ def evaluate_model(models, S_obs, truth, N_gap, dt, lead_time, n_regimes,
 
 
 if __name__ == '__main__':
-    from L63_noisy import L63RegimeModel
-    np.random.seed(0)
+    import numpy as np
+    import torch
+    import xarray as xr
+    from ENSO import CNNLSTM1D, ChannelZScoreScaler, AutoRegressiveModelSingle
+    # from model_evaluation import evaluate_model
+    import pickle
 
-    data = np.load('../data/data_L63.npz')
-    dt = data['dt'].item()
-    N_gap = data['N_gap'].item()
-    dt_obs = data['dt_obs'].item()
-    N_gap = data['N_gap'].item()
-    truth_full = np.concatenate((data['x_truth'][:,None], data['y_truth'][:,None], data['z_truth'][:,None]), axis=1)
-    truth_full = truth_full[::N_gap]
-    S_obs = data['S_obs']
-    T = len(S_obs)
-    lead_time = 1
-    sigma_x = np.sqrt(2.0)
-    sigma_y = 1.0
-    sigma_z = 1.0
-    sigma_obs = 2 * np.sqrt(2)
+    with open('../data/ENSO_FCM_Obs_anomalies_4regimes.pkl', 'rb') as f:
+        cluster_file = pickle.load(f)
+    S_obs = cluster_file['labels']
+    regime_weights = cluster_file['membership']
+    ds = xr.open_dataset('../data/ENSO_Obs_anomalies.nc').sel(time=slice("1981-01", "2025-07"))
+    arrays = [ds["sst_eq_anom"], ds["ssh_eq_anom"]]  # (time, lon) each
+    truth_full = xr.concat(arrays, dim='var').transpose('time', 'var', 'lon').values # take real obs as truth
+    L = cluster_file['t_window']           # time delay steps
+    n_regimes = cluster_file['n_cluster']  # number of regimes
+    truth = truth_full[L-1:, :2]
+    Nt, Nv, Nx = truth.shape
+    S_obs = S_obs[:Nt]
+    regime_weights = regime_weights[:Nt]
+    scales_var = np.array([1, .2]) # SST, SSH
+    scales = np.repeat(scales_var, Nx)
 
-    models = [
-        {'sigma': 10, 'beta': 8/3, 'rho': 28},
-        {'sigma': 20, 'beta': 5,   'rho': 10},
-        {'sigma': 15, 'beta': 4,   'rho': 35}
-    ]
-    regimes = [
-        {'sigma': 10, 'beta': 8/3, 'rho': 28},
-        {'sigma': 20, 'beta': 5,   'rho': 10},
-    ]
-    holding_parameters = np.array([0.2, 0.3, 0.4])
+    device = "cuda:1"
+    model_names = [
+                   # 'ACCESS-CM2_historical_r1i1p1f1',    # fair
+                   # 'GFDL-CM4_historical_r1i1p1f1',      # best
+                   # 'UKESM1-0-LL_historical_r1i1p1f2',   # good
+                   'MIROC-ES2L_historical_r1i1p1f2',    # bad
+                   # 'CMCC-ESM2_historical_r1i1p1f1',     # bad
+                   'MPI-ESM1-2-LR_historical_r1i1p1f1', # bad
+                   # 'CanESM5_historical_r1i1p1f1',
+                  ]
+    n_models = len(model_names)
+    results_eval_by_regime = {}
+    for reg in range(n_regimes):
+        print(f"\n=== Evaluating models for regime {reg} ===")
+        models = []
+        for idx_model, name in enumerate(model_names):
+            short_name = name.split("_")[0]
+            print(f"model {idx_model}: {short_name}")
+            model = CNNLSTM1D(
+                in_channels=2,
+                out_channels=2,
+                latent_channels=40,
+                hidden_channels=10,
+                Nx=Nx,
+                latent_dim=20,
+                lstm_hidden_dim=64,
+                lstm_layers=1,
+            ).to(device)        
+            scaler = ChannelZScoreScaler()
+            checkpoint = torch.load(f"../model/ENSO_NNs4CMIP6_{name}_SingleModel_anomalies.pt", map_location=device, weights_only=False)
+            model.load_state_dict(checkpoint["model_state_dict"])
+            scaler.load_state_dict(checkpoint["scaler_state"])
+            ar_model = AutoRegressiveModelSingle(model=model, scaler=scaler, device=device)
+            models.append(ar_model)
+        results_eval = evaluate_model(models, S_obs, truth, N_gap=3, 
+                           dt=1/3, lead_time=1, n_regimes=n_regimes,
+                           rho_mse=4.0, rho_kl=2.0, rho_ed=2.0, verbose=False, 
+                           seq_len=1, bins_kl_joint=10, max_joint_dim_kl=3,
+                           bins_kl_pervar=30, save_hist_pervar=True, scales=scales)
+        results_eval_by_regime[reg] = results_eval
 
-    n_models = len(models)
-    n_regimes = len(regimes)
-    score_matrix = np.zeros((n_models, n_regimes))
-    for model_id in range(n_models):    
-        routing_matrix = np.zeros((n_models, n_models))
-        routing_matrix[:, model_id] = 1
-        model = L63RegimeModel(models, routing_matrix, holding_parameters, sigma_x, sigma_y, sigma_z)
+    # Build a hist_pervar_same that ONLY keeps same-regime pairs: e.g., for regime 0: entries with regime_id == 0
+    hist_pervar_example = results_eval_by_regime[0]["hist_pervar"]
+    n_vars_total = len(hist_pervar_example)
+    hist_pervar_same = [[] for _ in range(n_vars_total)]
+    for reg, res in results_eval_by_regime.items():
+        hist_reg = res["hist_pervar"] 
+        for v in range(n_vars_total):
+            for (p_v, q_v, edges_v, regime_id, model_id, v_idx) in hist_reg[v]:
+                # Keep ONLY same-regime entries: models of "reg" evaluated on regime "reg"
+                if regime_id == reg:
+                    hist_pervar_same[v].append((p_v, q_v, edges_v, regime_id, model_id, v_idx))
 
-        for regime_id in range(n_regimes):
-            idx = np.where(S_obs == regime_id)[0]
-            idx = idx + lead_time
-            idx = idx[idx < T]  # avoid index out of bounds
-            X0 = truth_full[idx-lead_time]
-            A_true = truth_full[idx]
-            A_pred = np.zeros_like(A_true)
-            T_pred = len(idx)
-            
-            for i in range(T_pred):
-                x1, y1, z1, _ = model.forecast(N_gap, dt, X0[i,0], X0[i,1], X0[i,2], model_id)
-                A_pred[i,0] = x1[-1]
-                A_pred[i,1] = y1[-1]
-                A_pred[i,2] = z1[-1]
-
-            kl_xyz_1, p_xyz_1, q_xyz_1, edges_xyz_1 = evaluate_model_error(A_data=A_true, A_model=A_pred, bins=10)
-            model_score = np.exp(-2*kl_xyz_1)
-            score_matrix[model_id, regime_id] = model_score
-
-    weight_matrix = score_matrix / np.sum(score_matrix, axis=0)
-
-    np.savez('../data/model_evaluation.npz', 
-             weight_matrix=weight_matrix,
-             score_matrix=score_matrix,
-             models=models,
-             regimes=regimes
-            )
+    # Save the same-regime weights
+    weights_mse_same_reg = np.zeros((n_models, n_regimes))
+    weights_kl_same_reg  = np.zeros((n_models, n_regimes))
+    weights_ed_same_reg  = np.zeros((n_models, n_regimes))
+    for reg, results_eval in results_eval_by_regime.items():
+        weights_mse = results_eval["weights_mse"]
+        weights_kl  = results_eval["weights_kl"]
+        weights_ed  = results_eval["weights_ed"]
+        weights_mse_same_reg[:, reg] = weights_mse[:, reg]
+        weights_kl_same_reg[:, reg]  = weights_kl[:, reg]
+        weights_ed_same_reg[:, reg]  = weights_ed[:, reg]
+    weights_same_reg = {
+        "mse": weights_mse_same_reg,
+        "kl":  weights_kl_same_reg,
+        "ed":  weights_ed_same_reg,
+    }
+    bundle = {
+        "model_names": model_names,
+        "n_regimes": n_regimes,
+        "results_eval_by_regime": results_eval_by_regime,
+        "hist_pervar_same": hist_pervar_same,
+        "weights_same_reg": weights_same_reg,
+    }
+    with open("../data/ENSO_ModelEval_Results_4regimes2modelsweighted_anomalies.pkl", "wb") as f:
+        pickle.dump(bundle, f)

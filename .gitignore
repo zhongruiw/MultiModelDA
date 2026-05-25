@@ -13,3 +13,7 @@ data/TrueData.mat
 code/ENSO1.ipynb
 /code/legacy
 /code/tuning
+code/MultimodelDA.ipynb
+intro/code/MultiModelDA.ipynb
+/intro
+/paper

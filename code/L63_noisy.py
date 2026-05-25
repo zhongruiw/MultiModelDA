@@ -1,6 +1,44 @@
 import numpy as np
 
 
+class L63Model:
+    """
+    Stochastic Lorenz-63 with Euler–Maruyama.
+    """
+    def __init__(self, sigma=10.0, beta=8/3, rho=28.0,
+                 sigma_x=0.0, sigma_y=0.0, sigma_z=0.0):
+        self.sigma = float(sigma)
+        self.beta  = float(beta)
+        self.rho   = float(rho)
+        self.sigma_x = float(sigma_x)
+        self.sigma_y = float(sigma_y)
+        self.sigma_z = float(sigma_z)
+
+    def forecast(self, N_gap, dt, x0):
+        """
+        N_gap : int
+        dt    : float
+        x0    : array-like, last dimension must be 3
+
+        Returns
+        -------
+        traj : (N_gap+1, 3)
+        """
+        x = x0
+        traj = np.zeros((N_gap + 1, 3), dtype=float)
+        traj[0] = x
+        for k in range(N_gap):
+            X, Y, Z = x
+            dx = self.sigma * (Y - X)
+            dy = X * (self.rho - Z) - Y
+            dz = X * Y - self.beta * Z
+            drift = np.array([dx, dy, dz], dtype=float)
+            noise = np.array([self.sigma_x, self.sigma_y, self.sigma_z], dtype=float) * np.sqrt(dt) * np.random.randn(3)
+            x = x + drift * dt + noise
+            traj[k + 1] = x
+        return traj
+
+
 class L63RegimeModel:
     def __init__(self, regimes, routing_matrix, holding_parameters,
                  sigma_x=0.0, sigma_y=0.0, sigma_z=0.0):
@@ -15,49 +53,49 @@ class L63RegimeModel:
         self.sigma_y = sigma_y
         self.sigma_z = sigma_z
 
-    def forecast(self, N, dt, x0, y0, z0, S0):
+    def forecast(self, Nt, dt, x0, y0, z0, S0):
         """
         Simulate a single trajectory with regime switching.
         """
-        x = np.zeros(N)
-        y = np.zeros(N)
-        z = np.zeros(N)
-        S = np.zeros(N, dtype=int)
+        x = np.zeros(Nt+1)
+        y = np.zeros(Nt+1)
+        z = np.zeros(Nt+1)
+        S = np.zeros(Nt+1, dtype=int)
 
         x[0], y[0], z[0], S[0] = x0, y0, z0, S0
 
-        for i in range(1, N):
-            current_regime = S[i - 1]
+        for n in range(1, Nt+1):
+            current_regime = S[n - 1]
             holding_param = self.holding_parameters[current_regime]
 
             # Regime switching
             if np.random.rand() < holding_param * dt:
-                S[i] = np.random.choice(self.n_regimes, p=self.routing_matrix[current_regime])
+                S[n] = np.random.choice(self.n_regimes, p=self.routing_matrix[current_regime])
             else:
-                S[i] = current_regime
+                S[n] = current_regime
 
             # Get regime parameters
-            sigma, beta, rho = self._get_params(S[i])
+            sigma, beta, rho = self._get_params(S[n])
 
             # Euler-Maruyama step with noise
-            x[i] = x[i - 1] + sigma * (y[i - 1] - x[i - 1]) * dt + self.sigma_x * np.sqrt(dt) * np.random.randn()
-            y[i] = y[i - 1] + (x[i - 1] * (rho - z[i - 1]) - y[i - 1]) * dt + self.sigma_y * np.sqrt(dt) * np.random.randn()
-            z[i] = z[i - 1] + (x[i - 1] * y[i - 1] - beta * z[i - 1]) * dt + self.sigma_z * np.sqrt(dt) * np.random.randn()
+            x[n] = x[n - 1] + sigma * (y[n - 1] - x[n - 1]) * dt + self.sigma_x * np.sqrt(dt) * np.random.randn()
+            y[n] = y[n - 1] + (x[n - 1] * (rho - z[n - 1]) - y[n - 1]) * dt + self.sigma_y * np.sqrt(dt) * np.random.randn()
+            z[n] = z[n - 1] + (x[n - 1] * y[n - 1] - beta * z[n - 1]) * dt + self.sigma_z * np.sqrt(dt) * np.random.randn()
 
         return x, y, z, S
 
-    def ensemble_forecast(self, N, dt, x0, y0, z0, S0, ensemble_size):
+    def ensemble_forecast(self, Nt, dt, x0, y0, z0, S0, ensemble_size):
         """
         Run an ensemble forecast of size `ensemble_size`.
         Returns arrays of shape (ensemble_size, N)
         """
-        X = np.zeros((ensemble_size, N))
-        Y = np.zeros((ensemble_size, N))
-        Z = np.zeros((ensemble_size, N))
-        S = np.zeros((ensemble_size, N), dtype=int)
+        X = np.zeros((ensemble_size, Nt+1))
+        Y = np.zeros((ensemble_size, Nt+1))
+        Z = np.zeros((ensemble_size, Nt+1))
+        S = np.zeros((ensemble_size, Nt+1), dtype=int)
 
         for i in range(ensemble_size):
-            xi, yi, zi, Si = self.forecast(N, dt, x0[i], y0[i], z0[i], S0[i])
+            xi, yi, zi, Si = self.forecast(Nt, dt, x0[i], y0[i], z0[i], S0[i])
             X[i, :], Y[i, :], Z[i, :], S[i, :] = xi, yi, zi, Si
 
         return X, Y, Z, S
@@ -75,8 +113,8 @@ if __name__ == '__main__':
     T = 2e3
     dt = 0.005
     dt_obs = 0.25
-    N = int(round(T / dt))
-    N_gap = int(round(dt_obs / dt))
+    Nt = int(round(T / dt))
+    Nt_gap = int(round(dt_obs / dt))
     sigma_x = np.sqrt(2.0)
     sigma_y = 1.0
     sigma_z = 1.0
@@ -107,13 +145,13 @@ if __name__ == '__main__':
     z0 = 25.46091
 
     model = L63RegimeModel(regimes, routing_matrix, holding_parameters, sigma_x, sigma_y, sigma_z)
-    x_truth, y_truth, z_truth, S = model.forecast(N, dt, x0, y0, z0, S0)
+    x_truth, y_truth, z_truth, S = model.forecast(Nt, dt, x0, y0, z0, S0)
 
     # Generate observations
-    x_obs = x_truth[::N_gap] + sigma_obs * np.random.randn(N // N_gap)
-    y_obs = y_truth[::N_gap] + sigma_obs * np.random.randn(N // N_gap)
-    z_obs = z_truth[::N_gap] + sigma_obs * np.random.randn(N // N_gap)
-    S_obs = S[::N_gap]
+    x_obs = x_truth[::Nt_gap] + sigma_obs * np.random.randn(x_truth[::Nt_gap].shape[0])
+    y_obs = y_truth[::Nt_gap] + sigma_obs * np.random.randn(x_truth[::Nt_gap].shape[0])
+    z_obs = z_truth[::Nt_gap] + sigma_obs * np.random.randn(x_truth[::Nt_gap].shape[0])
+    S_obs = S[::Nt_gap]
 
     np.savez('../data/data_L63.npz',
              x_truth=x_truth,
@@ -123,8 +161,8 @@ if __name__ == '__main__':
              x_obs=x_obs,
              y_obs=y_obs,
              z_obs=z_obs,
-             N=N,
-             N_gap=N_gap,
+             Nt=Nt,
+             Nt_gap=Nt_gap,
              dt=dt,
              dt_obs=dt_obs,
              S_obs=S_obs,

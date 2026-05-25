@@ -172,11 +172,15 @@ class BarotropicDataset(Dataset):
     def __getitem__(self, idx):
         x = self.data[idx:idx + self.seq_len]
         y = self.data[idx + self.seq_len:idx + self.seq_len + self.pred_len]
-        return torch.tensor(x, dtype=torch.float32), torch.tensor(y[0], dtype=torch.float32)
+        if self.pred_len == 1:
+            return torch.tensor(x, dtype=torch.float32), torch.tensor(y[0], dtype=torch.float32)
+        else:
+            return torch.tensor(x, dtype=torch.float32), torch.tensor(y, dtype=torch.float32)
 
 class PiecewiseSeriesDataset(Dataset):
     def __init__(self, segments, seq_len, pred_len):
         self.samples = []
+        self.pred_len = pred_len
         for seg in segments:
             if len(seg) < seq_len + pred_len:
                 continue
@@ -190,11 +194,15 @@ class PiecewiseSeriesDataset(Dataset):
 
     def __getitem__(self, idx):
         x, y = self.samples[idx]
-        return torch.tensor(x, dtype=torch.float32), torch.tensor(y[0], dtype=torch.float32)
+        if self.pred_len == 1:
+            return torch.tensor(x, dtype=torch.float32), torch.tensor(y[0], dtype=torch.float32)
+        else:
+            return torch.tensor(x, dtype=torch.float32), torch.tensor(y, dtype=torch.float32)
 
 class LSTMTrainer:
     def __init__(self, data_path=None, piecewise=False, data_segments=None, seq_len=10, pred_len=1,
-                 hidden_dim=64, batch_size=200, num_epochs=20,
+                 hidden_dim=64, batch_size=200, num_epochs=20, k_substeps=1,
+                 lambda_tv=0.0, lambda_curv=0.0, lr=1e-3, grad_clip=None,
                  model_dir="../model", seed=0, device=None, train_portion=0.8):
         self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
         torch.manual_seed(seed)
@@ -202,13 +210,17 @@ class LSTMTrainer:
 
         self.seq_len = seq_len
         self.pred_len = pred_len
+        self.k_substeps = k_substeps          # autoregressive rollout steps per training iteration
+        self.lambda_tv = lambda_tv            # total-variation penalty on the rolled trajectory
+        self.lambda_curv = lambda_curv        # curvature penalty on the rolled trajectory
+        self.grad_clip = grad_clip            # optional gradient-norm clip
         self.hidden_dim = hidden_dim
         self.batch_size = batch_size
         self.num_epochs = num_epochs
         self.model_dir = model_dir
         self._load_data(data_path, piecewise, data_segments, train_portion)
         self.model = LSTMModel(self.input_dim, hidden_dim, self.input_dim).to(self.device)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
         self.loss_fn = nn.MSELoss()
         self.train_losses = []
 
@@ -239,6 +251,51 @@ class LSTMTrainer:
         self.train_loader = DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True)
         self.test_loader = DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=False)
 
+    def _rollout_k_steps(self, x_seq, K: int):
+        """Autoregressive K-step rollout of self.model starting from x_seq (B, L, D).
+
+        Returns list xs of length K+1: xs[0] is the last input frame x_seq[:, -1] (B, D);
+        xs[1..K] are the K predicted frames y_1, ..., y_K, each of shape (B, D).
+        """
+        x_roll = x_seq                # (B, L, D)
+        xs = [x_seq[:, -1]]           # (B, D), the state at the end of the history window
+        for k in range(K):
+            y_step = self.model(x_roll)                                       # (B, D)
+            x_roll = torch.cat([x_roll[:, 1:], y_step.unsqueeze(1)], dim=1)   # (B, L, D), shift window
+            xs.append(y_step)
+        return xs
+
+    def _rollout_loss(self, xb, yb):
+        """Forward rollout + composite loss (MSE + TV + curvature).
+
+        If pred_len == k_substeps and k_substeps > 1, the MSE is a per-step
+        trajectory loss matching the K rolled frames against the K ground-truth
+        frames in yb (shape (B, K, D)). Otherwise the MSE matches only the
+        terminal predicted frame xs[-1] against the last step of the target window
+        (yb if pred_len == 1, else yb[:, -1]).
+        """
+        K = self.k_substeps
+        xs = self._rollout_k_steps(xb, K)   # length K+1
+        # ---- MSE term
+        if self.pred_len == K and K > 1:
+            # yb: (B, K, D); compare xs[1..K] to yb[0..K-1]
+            preds = torch.stack(xs[1:], dim=1)            # (B, K, D)
+            mse = self.loss_fn(preds, yb)
+        else:
+            target = yb if self.pred_len == 1 else yb[:, -1]  # (B, D)
+            mse = self.loss_fn(xs[-1], target)
+        # ---- TV / curvature regularizers on the rolled trajectory (no-ops when K=1 / K<=1)
+        if K >= 1 and self.lambda_tv > 0:
+            tv = sum((xs[k+1] - xs[k]).pow(2).mean() for k in range(K)) / K
+        else:
+            tv = torch.tensor(0.0, device=xb.device)
+        if K >= 2 and self.lambda_curv > 0:
+            curv = sum((xs[k+2] - 2*xs[k+1] + xs[k]).pow(2).mean() for k in range(K-1)) / (K - 1)
+        else:
+            curv = torch.tensor(0.0, device=xb.device)
+        loss = mse + self.lambda_tv * tv + self.lambda_curv * curv
+        return loss, xs
+
     def train(self, plot=True, save_dir_model=None, save_dir_loss=None):
         os.makedirs(self.model_dir, exist_ok=True)
         start_time = time.time()
@@ -247,10 +304,11 @@ class LSTMTrainer:
             total_loss = 0
             for xb, yb in self.train_loader:
                 xb, yb = xb.to(self.device), yb.to(self.device)
-                pred = self.model(xb)
-                loss = self.loss_fn(pred, yb)
+                loss, _ = self._rollout_loss(xb, yb)
                 self.optimizer.zero_grad()
                 loss.backward()
+                if self.grad_clip is not None:
+                    nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
                 self.optimizer.step()
                 total_loss += loss.item() * xb.size(0)
             avg_loss = total_loss / len(self.train_dataset)
@@ -283,10 +341,9 @@ class LSTMTrainer:
         with torch.no_grad():
             for xb, yb in self.test_loader:
                 xb, yb = xb.to(self.device), yb.to(self.device)
-                pred = self.model(xb)
-                loss = self.loss_fn(pred, yb)
+                loss, xs = self._rollout_loss(xb, yb)
                 test_loss += loss.item() * xb.size(0)
-                test_preds.append(pred)
+                test_preds.append(xs[-1])    # K-step terminal prediction
 
         test_pred = torch.cat(test_preds, dim=0)
         test_loss /= len(self.test_dataset)
